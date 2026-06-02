@@ -6,6 +6,7 @@ export type CompactionTimeoutSignal = {
   isCompactionInFlight: boolean;
 };
 
+/** Returns true when a run timeout should be attributed to compaction work. */
 export function shouldFlagCompactionTimeout(signal: CompactionTimeoutSignal): boolean {
   if (!signal.isTimeout) {
     return false;
@@ -13,6 +14,7 @@ export function shouldFlagCompactionTimeout(signal: CompactionTimeoutSignal): bo
   return signal.isCompactionPendingOrRetrying || signal.isCompactionInFlight;
 }
 
+/** Decides whether a run timeout gets one compaction grace window or aborts immediately. */
 export function resolveRunTimeoutDuringCompaction(params: {
   isCompactionPendingOrRetrying: boolean;
   isCompactionInFlight: boolean;
@@ -24,6 +26,7 @@ export function resolveRunTimeoutDuringCompaction(params: {
   return params.graceAlreadyUsed ? "abort" : "extend";
 }
 
+/** Combines the normal run timeout with the one-time compaction grace budget. */
 export function resolveRunTimeoutWithCompactionGraceMs(params: {
   runTimeoutMs: number;
   compactionTimeoutMs: number;
@@ -46,6 +49,8 @@ export type SnapshotSelection = {
 };
 
 function canContinueFromMessage(message: AgentMessage | undefined): boolean {
+  // Continuations must resume from a transcript tail that can accept a new model
+  // turn; dangling assistant/tool-call rows would corrupt retry context.
   switch (message?.role) {
     case "user":
     case "toolResult":
@@ -68,6 +73,7 @@ function trimToContinuableTail(messages: AgentMessage[]): AgentMessage[] | null 
   return end > 0 ? messages.slice(0, end) : null;
 }
 
+/** Chooses the safest transcript snapshot after a timeout interrupts compaction. */
 export function selectCompactionTimeoutSnapshot(
   params: SnapshotSelectionParams,
 ): SnapshotSelection {
@@ -80,6 +86,8 @@ export function selectCompactionTimeoutSnapshot(
   }
 
   if (params.preCompactionSnapshot) {
+    // Prefer the pre-compaction transcript so the retry does not inherit a
+    // partial summary that may have been written by the timed-out compactor.
     const continuablePreCompactionSnapshot = trimToContinuableTail(params.preCompactionSnapshot);
     if (continuablePreCompactionSnapshot) {
       return {
