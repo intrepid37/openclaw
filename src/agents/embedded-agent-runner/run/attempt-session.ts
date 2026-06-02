@@ -1,5 +1,6 @@
 import type { CreateAgentSessionOptions } from "../../sessions/index.js";
 
+/** Session options passed through the embedded runner's resource-loader seam. */
 export type EmbeddedAgentSessionOptions = {
   cwd: string;
   agentDir: string;
@@ -15,6 +16,10 @@ export type EmbeddedAgentSessionOptions = {
   withSessionWriteLock?: CreateAgentSessionOptions["withSessionWriteLock"];
 };
 
+/**
+ * Create an embedded agent session while preserving the explicit resourceLoader
+ * object supplied by the runner.
+ */
 export async function createEmbeddedAgentSessionWithResourceLoader<Result>(params: {
   createAgentSession: (options: EmbeddedAgentSessionOptions) => Promise<Result> | Result;
   options: EmbeddedAgentSessionOptions;
