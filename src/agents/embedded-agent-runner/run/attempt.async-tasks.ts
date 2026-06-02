@@ -6,6 +6,7 @@ import {
   listTasksForOwnerOrRequesterSessionKeyForStatus,
 } from "../../../tasks/task-status-access.js";
 
+/** Tool-result metadata used to discover detached work started by this attempt. */
 export type AsyncStartedToolMeta = {
   toolName?: string;
   asyncStarted?: boolean;
@@ -13,6 +14,7 @@ export type AsyncStartedToolMeta = {
   asyncTaskId?: string;
 };
 
+/** Summary of completion-required async work observed before the attempt can finish. */
 export type CompletionRequiredAsyncTaskWaitResult = {
   waitedRunIds: string[];
   timedOutRunIds: string[];
@@ -108,6 +110,8 @@ function collectAsyncTaskRunIds(
     if (isTerminalTaskStatus(task.status)) {
       continue;
     }
+    // Registry lookup catches media tasks started by detached runtimes after
+    // the tool meta snapshot, so cron delivery waits for all visible work.
     addRunId(task.runId);
   }
   return runIds;
@@ -130,6 +134,7 @@ function findTerminalTasks(runIds: readonly string[]): {
   return { pendingRunIds, terminalTasks };
 }
 
+/** Returns whether this cron attempt has media work that must finish first. */
 export function requiresCompletionRequiredAsyncTaskWait(params: {
   sessionKey: string | undefined;
   toolMetas: readonly AsyncStartedToolMeta[];
@@ -153,6 +158,7 @@ export function requiresCompletionRequiredAsyncTaskWait(params: {
   );
 }
 
+/** Waits for cron-owned media tasks that must finish before final delivery. */
 export async function waitForCompletionRequiredAsyncTasks(params: {
   getToolMetas: () => readonly AsyncStartedToolMeta[];
   sessionKey?: string;
@@ -184,6 +190,8 @@ export async function waitForCompletionRequiredAsyncTasks(params: {
       waitedRunIds.add(runId);
     }
 
+    // A completed tool can enqueue a second completion-required task, so the
+    // outer loop re-reads tool metas and registry state after each batch.
     let pendingRunIds = runIds;
     while (pendingRunIds.length > 0) {
       throwIfAborted(params.abortSignal);
