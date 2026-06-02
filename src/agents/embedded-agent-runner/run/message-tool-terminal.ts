@@ -103,6 +103,8 @@ function deliveryEnvelopeIndicatesDryRun(value: unknown, depth = 0): boolean {
     }
   }
 
+  // Delivery adapters may wrap status in provider-specific result/detail
+  // envelopes; bound recursion so malformed tool output cannot hang the hook.
   return RESULT_ENVELOPE_KEYS.some((key) =>
     deliveryEnvelopeIndicatesDryRun(record[key], depth + 1),
   );
@@ -142,11 +144,14 @@ function deliveryEnvelopeIndicatesDelivered(value: unknown, depth = 0): boolean 
     }
   }
 
+  // Mirror the dry-run scan shape so terminal detection treats hook rewrites
+  // and raw tool results consistently.
   return RESULT_ENVELOPE_KEYS.some((key) =>
     deliveryEnvelopeIndicatesDelivered(record[key], depth + 1),
   );
 }
 
+/** Returns true when message-tool-only delivery already sent the final reply. */
 export function shouldTerminateAfterMessageToolOnlySend(params: {
   sourceReplyDeliveryMode?: SourceReplyDeliveryMode;
   context: AfterToolCallContext;
@@ -167,6 +172,8 @@ export function shouldTerminateAfterMessageToolOnlySend(params: {
   if (isError || isToolResultError(params.context.result)) {
     return false;
   }
+  // Dry-run previews can look structurally successful, but they did not deliver
+  // a channel reply and must not terminate the assistant turn.
   if (
     args.dryRun === true ||
     deliveryEnvelopeIndicatesDryRun(params.context.result) ||
@@ -183,6 +190,7 @@ export function shouldTerminateAfterMessageToolOnlySend(params: {
   return true;
 }
 
+/** Installs an afterToolCall hook that terminates message-tool-only delivered replies. */
 export function installMessageToolOnlyTerminalHook(params: {
   agent: Agent;
   sourceReplyDeliveryMode?: SourceReplyDeliveryMode;

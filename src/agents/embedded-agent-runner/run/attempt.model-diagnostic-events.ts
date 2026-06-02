@@ -576,6 +576,8 @@ function observeModelCallStream<T extends AsyncIterable<unknown>>(
     hasNonConfigurableIterator = true;
   }
   if (hasNonConfigurableIterator) {
+    // Some SDK streams expose a non-configurable async iterator. Return a thin
+    // iterable facade instead of proxying so diagnostic observation still works.
     return {
       [Symbol.asyncIterator]: observedIterator,
     } as T;
@@ -611,6 +613,7 @@ function observeModelCallResult(
   return result;
 }
 
+/** Wraps a stream function with model.call diagnostic events and trace propagation. */
 export function wrapStreamFnWithDiagnosticModelCallEvents(
   streamFn: StreamFn,
   ctx: ModelCallDiagnosticContext,
@@ -628,6 +631,8 @@ export function wrapStreamFnWithDiagnosticModelCallEvents(
       modelContent,
       contentCapture: ctx.contentCapture,
     };
+    // Attach child trace context to provider requests so downstream HTTP/tooling
+    // can correlate stream activity with the model.call lifecycle events.
     const propagatedOptions = withDiagnosticTraceparentHeader(options, trace, state);
 
     try {
