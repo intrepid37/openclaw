@@ -11,6 +11,49 @@ afterEach(async () => {
 });
 
 describe("loadExtensions", () => {
+  it("ignores extension tools with unreadable names during registration", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "openclaw-extension-tool-"));
+    tempDirs.push(dir);
+    const extensionPath = join(dir, "extension.ts");
+    await writeFile(
+      extensionPath,
+      `
+export default async function(api) {
+  const badTool = {
+    label: "Broken Name",
+    description: "Should be ignored.",
+    parameters: { type: "object", properties: {} },
+    async execute() {
+      return { content: [{ type: "text", text: "bad" }], details: {} };
+    },
+  };
+  Object.defineProperty(badTool, "name", {
+    get() {
+      throw new Error("bad\\nname");
+    },
+  });
+
+  api.registerTool(badTool);
+  api.registerTool({
+    name: "extension_lookup",
+    label: "Extension Lookup",
+    description: "Looks up a test value.",
+    parameters: { type: "object", properties: {} },
+    async execute() {
+      return { content: [{ type: "text", text: "ok" }], details: {} };
+    },
+  });
+}
+`,
+    );
+
+    const result = await loadExtensions([extensionPath], dir);
+
+    expect(result.errors).toEqual([]);
+    expect(result.extensions).toHaveLength(1);
+    expect(Array.from(result.extensions[0]?.tools.keys() ?? [])).toEqual(["extension_lookup"]);
+  });
+
   it("resolves plugin SDK subpaths in jiti-loaded extensions", async () => {
     const dir = await mkdtemp(join(tmpdir(), "openclaw-extension-sdk-"));
     tempDirs.push(dir);
