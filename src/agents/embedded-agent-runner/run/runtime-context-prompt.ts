@@ -18,6 +18,7 @@ type RuntimeContextPromptParts = {
   runtimeSystemContext?: string;
 };
 
+/** Hidden custom transcript row used to carry runtime context between turns. */
 export type RuntimeContextCustomMessage = {
   role: "custom";
   customType: string;
@@ -29,6 +30,7 @@ export type RuntimeContextCustomMessage = {
 
 type EmptyTranscriptMode = "model-prompt" | "runtime-event";
 
+/** Returns current-turn context text, optionally using resumable backend-safe text. */
 export function buildCurrentInboundPromptContextPrefix(
   context: CurrentInboundPromptContext | undefined,
   options?: { preferResumableText?: boolean },
@@ -40,6 +42,7 @@ export function buildCurrentInboundPromptContextPrefix(
   return text?.trim() ?? "";
 }
 
+/** Prepends current inbound context to the user prompt with the context joiner. */
 export function buildCurrentInboundPrompt(params: {
   context: CurrentInboundPromptContext | undefined;
   prompt: string;
@@ -78,6 +81,8 @@ export function resolveRuntimeContextPromptParts(params: {
 }): RuntimeContextPromptParts {
   const transcriptPrompt = params.transcriptPrompt;
   const shouldExtractInternalRuntimeContext = transcriptPrompt !== undefined;
+  // Only transcript-aware calls extract hidden runtime context. Raw provider
+  // probes and no-transcript prompts preserve delimiter text literally.
   const extracted = shouldExtractInternalRuntimeContext
     ? extractInternalRuntimeContext(params.effectivePrompt)
     : { text: params.effectivePrompt };
@@ -106,6 +111,8 @@ export function resolveRuntimeContextPromptParts(params: {
     : transcriptPrompt
       ? removeLastPromptOccurrence(extracted.text, transcriptPrompt)?.trim()
       : undefined;
+  // Runtime context can come from explicit internal blocks or from prompt text
+  // hidden from the transcript. Keep it separate from model-only retry text.
   const runtimeContext =
     [hiddenRuntimeContext, extracted.runtimeContext]
       .filter((value): value is string => Boolean(value?.trim()))
@@ -150,14 +157,17 @@ function buildRuntimeContextMessageContent(params: {
   ].join("\n");
 }
 
+/** Builds prompt-local system context for runtime details tied to the next turn. */
 export function buildRuntimeContextSystemContext(runtimeContext: string): string {
   return buildRuntimeContextMessageContent({ runtimeContext, kind: "next-turn" });
 }
 
+/** Builds prompt-local system context for runtime-generated event turns. */
 export function buildRuntimeEventSystemContext(runtimeContext: string): string {
   return buildRuntimeContextMessageContent({ runtimeContext, kind: "runtime-event" });
 }
 
+/** Converts hidden runtime context into a non-displayed custom transcript row. */
 export function buildRuntimeContextCustomMessage(
   runtimeContext: string | undefined,
 ): RuntimeContextCustomMessage | undefined {
