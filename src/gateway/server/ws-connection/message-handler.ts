@@ -306,6 +306,7 @@ function resolvePinnedClientMetadata(params: {
 }
 
 export type GatewayWsMessageHandlerParams = {
+  /** Raw WebSocket plus upgrade metadata for one gateway connection. */
   socket: WebSocket;
   upgradeReq: IncomingMessage;
   connId: string;
@@ -350,6 +351,7 @@ export type GatewayWsMessageHandlerParams = {
   logWsControl: SubsystemLogger;
 };
 
+/** Wires the full gateway WebSocket frame lifecycle for a single accepted socket. */
 export function attachGatewayWsMessageHandler(params: GatewayWsMessageHandlerParams) {
   const {
     socket,
@@ -394,6 +396,8 @@ export function attachGatewayWsMessageHandler(params: GatewayWsMessageHandlerPar
     logWsControl,
   } = params;
 
+  // Handshake rejection paths need to flush a JSON-RPC response before closing;
+  // use the callback form so callers can await kernel/socket backpressure.
   const sendFrame = async (obj: unknown): Promise<void> =>
     await new Promise<void>((resolve, reject) => {
       socket.send(JSON.stringify(obj), (err) => {
@@ -473,6 +477,8 @@ export function attachGatewayWsMessageHandler(params: GatewayWsMessageHandlerPar
     if (!client.invalidated) {
       return false;
     }
+    // Device/token repair can invalidate an already-connected client between
+    // frames; close before dispatch so stale auth never reaches method handlers.
     const reason = client.invalidatedReason ?? "invalidated";
     setCloseCause("client-invalidated", {
       reason,
@@ -489,6 +495,8 @@ export function attachGatewayWsMessageHandler(params: GatewayWsMessageHandlerPar
 
     const preauthPayloadBytes = !getClient() ? getRawDataByteLength(data) : undefined;
     if (preauthPayloadBytes !== undefined && preauthPayloadBytes > MAX_PREAUTH_PAYLOAD_BYTES) {
+      // Apply the small pre-auth cap before JSON parsing. Authenticated clients
+      // get the normal WebSocket payload limit after the handshake succeeds.
       logRejectedLargePayload({
         surface: "gateway.ws.preauth",
         bytes: preauthPayloadBytes,
@@ -624,6 +632,8 @@ export function attachGatewayWsMessageHandler(params: GatewayWsMessageHandlerPar
         const { minProtocol, maxProtocol } = connectParams;
         const supportsCurrentProtocol =
           maxProtocol >= PROTOCOL_VERSION && minProtocol <= PROTOCOL_VERSION;
+        // Probe clients may be old enough to predate current protocol support;
+        // keep their restart/health path alive so they can report upgrade state.
         const supportsProbeRestartProtocol =
           connectParams.client.mode === GATEWAY_CLIENT_MODES.PROBE &&
           maxProtocol >= MIN_PROBE_PROTOCOL_VERSION &&
@@ -969,6 +979,8 @@ export function attachGatewayWsMessageHandler(params: GatewayWsMessageHandlerPar
         }
 
         const authDecision = await resolveConnectAuthDecision({
+          // Start from shared-auth state, then allow stronger bootstrap/device
+          // credentials to reclassify the session before pairing decisions run.
           state: {
             authResult,
             authOk,
@@ -1036,6 +1048,9 @@ export function attachGatewayWsMessageHandler(params: GatewayWsMessageHandlerPar
         const sharedGatewaySessionGeneration = usesSharedGatewayAuth
           ? resolveSharedGatewaySessionGeneration(resolvedAuth, trustedProxies)
           : undefined;
+        // Shared-auth sessions are bound to the current secret/proxy generation.
+        // Device tokens issued from that shared-auth generation inherit the same
+        // rotation boundary so a secret change can evict derived sessions too.
         const sessionUsesSharedGatewayAuth =
           usesSharedGatewayAuth || deviceTokenSharedGatewaySessionGeneration !== undefined;
         const sessionSharedGatewaySessionGeneration =
