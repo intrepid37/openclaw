@@ -3,6 +3,7 @@ import type { EmbeddedRunLivenessState } from "../types.js";
 import type { EmbeddedAgentMeta, EmbeddedAgentRunResult } from "../types.js";
 import type { RetryLimitFailoverDecision } from "./failover-policy.js";
 
+/** Converts retry-limit exhaustion into either model failover or a final error payload. */
 export function handleRetryLimitExhaustion(params: {
   message: string;
   decision: RetryLimitFailoverDecision;

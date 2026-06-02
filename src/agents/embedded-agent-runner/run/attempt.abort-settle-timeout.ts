@@ -4,6 +4,7 @@ type AbortSettleTimeoutEnv = Partial<
   Pick<NodeJS.ProcessEnv, "OPENCLAW_EMBEDDED_ABORT_SETTLE_TIMEOUT_MS" | "OPENCLAW_TEST_FAST">
 >;
 
+/** Resolves how long cleanup waits for an aborted attempt to settle background work. */
 export function resolveEmbeddedAbortSettleTimeoutMs(
   env: AbortSettleTimeoutEnv = process.env,
 ): number {
