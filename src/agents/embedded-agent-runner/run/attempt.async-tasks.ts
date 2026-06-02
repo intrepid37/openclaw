@@ -62,6 +62,8 @@ async function sleepWithAbort(
     return;
   }
   throwIfAborted(signal);
+  // The abort listener is removed on every path so repeated polling does not
+  // accumulate listeners during long media-generation waits.
   await new Promise<void>((resolve, reject) => {
     const onAbort = () => {
       signal.removeEventListener("abort", onAbort);
@@ -125,6 +127,8 @@ function findTerminalTasks(runIds: readonly string[]): {
   const terminalTasks: TaskRecord[] = [];
   for (const runId of runIds) {
     const task = findTaskByRunIdForStatus(runId);
+    // Missing task records stay pending until the deadline; detached runtimes
+    // can register after the tool meta that announced their run id.
     if (task && isTerminalTaskStatus(task.status)) {
       terminalTasks.push(task);
       continue;
@@ -186,6 +190,8 @@ export async function waitForCompletionRequiredAsyncTasks(params: {
       };
     }
 
+    // Mark run ids as waited before polling so a task that never appears again
+    // cannot be rediscovered forever across outer-loop iterations.
     for (const runId of runIds) {
       waitedRunIds.add(runId);
     }
