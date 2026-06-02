@@ -53,6 +53,8 @@ export function respondUnavailableOnNodeInvokeError<T extends { ok: boolean; err
   const nodeCode = normalizeOptionalString(nodeError?.code) ?? "";
   const nodeMessage = normalizeOptionalString(nodeError?.message) ?? "node invoke failed";
   const message = nodeCode ? `${nodeCode}: ${nodeMessage}` : nodeMessage;
+  // Keep the public error message compact, but preserve the raw node error in
+  // details so operator tooling can inspect provider-specific failure payloads.
   respond(
     false,
     undefined,
