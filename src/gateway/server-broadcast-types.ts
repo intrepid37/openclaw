@@ -1,8 +1,10 @@
+/** State-version counters attached to broadcasts so clients can ignore stale snapshots. */
 type GatewayBroadcastStateVersion = {
   presence?: number;
   health?: number;
 };
 
+/** Delivery controls for gateway broadcasts, including slow-socket backpressure policy. */
 export type GatewayBroadcastOpts = {
   dropIfSlow?: boolean;
   stateVersion?: GatewayBroadcastStateVersion;
