@@ -1311,7 +1311,9 @@ export function attachGatewayWsMessageHandler(params: GatewayWsMessageHandlerPar
             } else if (pairing.created) {
               context.broadcast("device.pair.requested", pairing.request, { dropIfSlow: true });
             }
-            // Re-resolve: another connection may have superseded/approved the request since we created it
+            // Re-resolve: another connection may have superseded/approved the
+            // request since we created it, so expose the live request id to the
+            // reconnecting client instead of the stale local request object.
             recoveryRequestId = await resolveLivePendingRequestId();
             if (
               !(
@@ -1498,6 +1500,9 @@ export function attachGatewayWsMessageHandler(params: GatewayWsMessageHandlerPar
                   })
                 : null;
             if (retryBootstrapHandoffProfile) {
+              // Mobile setup may reconnect as node after pairing already
+              // succeeded but before receiving hello-ok. Recreate only the
+              // approved operator handoff token rather than reopening pairing.
               const retryBootstrapOperatorScopes = resolveBootstrapProfileScopesForRole(
                 "operator",
                 retryBootstrapHandoffProfile.scopes,
@@ -1539,6 +1544,9 @@ export function attachGatewayWsMessageHandler(params: GatewayWsMessageHandlerPar
                 generation: sessionSharedGatewaySessionGeneration,
               }
             : undefined;
+        // Device tokens issued from browser/webchat shared auth remain tied to
+        // that shared-auth generation; plain paired-device reconnect tokens do
+        // not inherit the shared-secret rotation boundary.
         const deviceToken =
           shouldIssueDeviceToken && device && hasServerApprovedDeviceTokenBaseline
             ? await ensureDeviceToken({
@@ -1595,6 +1603,9 @@ export function attachGatewayWsMessageHandler(params: GatewayWsMessageHandlerPar
           }
         }
         if (role === "node") {
+          // Node pairing reconciliation can downgrade declared capabilities to
+          // the approved set. Reflect those effective values on the connect
+          // params before registration so downstream method routing sees policy.
           const reconciliation = await reconcileNodePairingOnConnect({
             cfg: getRuntimeConfig(),
             connectParams,
@@ -1657,6 +1668,8 @@ export function attachGatewayWsMessageHandler(params: GatewayWsMessageHandlerPar
         }> = [];
         if (pluginSurfaceBaseUrl) {
           for (const pluginCapabilitySurface of Object.values(pluginNodeCapabilitySurfaces)) {
+            // Mint per-client scoped URLs after auth/pairing but before setClient
+            // so plugin callbacks cannot see a surface without a stored grant.
             const capability = mintPluginNodeCapabilityToken();
             const expiresAtMs = resolvePluginNodeCapabilityExpiresAtMs(pluginCapabilitySurface);
             if (expiresAtMs === undefined) {
@@ -1962,6 +1975,9 @@ export function attachGatewayWsMessageHandler(params: GatewayWsMessageHandlerPar
         if (!barrier) {
           break;
         }
+        // Token rotation/revocation mutates the same credential store used by
+        // closeInvalidatedClient(); drain earlier mutation requests before
+        // authorizing later frames from this socket.
         await barrier.catch(() => undefined);
         if (isClosed()) {
           return;
@@ -2046,6 +2062,8 @@ export function attachGatewayWsMessageHandler(params: GatewayWsMessageHandlerPar
         respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, formatForLog(err)));
       });
       if (DEVICE_CREDENTIAL_INVALIDATING_METHODS.has(req.method)) {
+        // Later frames on this connection wait for device-token mutations to
+        // finish, preventing a stale in-memory client from racing one more RPC.
         const barrier = dispatch.finally(() => {
           if (deviceCredentialMutationBarrier === barrier) {
             deviceCredentialMutationBarrier = undefined;
