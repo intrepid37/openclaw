@@ -5,6 +5,7 @@ const OPTIONAL_MODEL_CATALOG_TIMEOUT_MS = 750;
 
 const loggedSlowCatalogKeys = new Set<string>();
 
+/** Best-effort model catalog loader for metadata enrichment in latency-sensitive RPCs. */
 export async function loadOptionalServerMethodModelCatalog(
   context: GatewayRequestContext,
   surface: string,
@@ -25,6 +26,8 @@ export async function loadOptionalServerMethodModelCatalog(
       const logOnceKey = options?.logOnceKey ?? "session-metadata";
       if (!loggedSlowCatalogKeys.has(logOnceKey)) {
         loggedSlowCatalogKeys.add(logOnceKey);
+        // Catalog data is decorative for these responses; log once per surface
+        // and keep the primary RPC responsive when provider discovery stalls.
         context.logGateway.debug(
           `${surface} continuing without model catalog after ${OPTIONAL_MODEL_CATALOG_TIMEOUT_MS}ms`,
         );
