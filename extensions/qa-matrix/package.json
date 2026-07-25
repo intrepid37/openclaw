@@ -5,12 +5,12 @@
   "description": "OpenClaw Matrix QA runner plugin",
   "type": "module",
   "dependencies": {
-    "undici": "8.3.0"
+    "undici": "8.5.0"
   },
   "devDependencies": {
     "@openclaw/matrix": "workspace:*",
     "@openclaw/plugin-sdk": "workspace:*",
-    "openclaw": "2026.5.28"
+    "openclaw": "2026.6.5"
   },
   "peerDependencies": {
     "openclaw": ">=2026.6.2"
