@@ -7,7 +7,11 @@ import { closeStateDatabaseForTest } from "../test-utils/database-cleanup.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import { readLaunchAgentProgramArguments } from "./launchd.js";
 import { resolveNodeService } from "./node-service.js";
-import { commitDaemonRuntimePin, readDaemonRuntimePin } from "./runtime-pin-state.js";
+import {
+  commitDaemonRuntimePin,
+  readDaemonRuntimePin,
+  readDaemonRuntimePinForInstall,
+} from "./runtime-pin-state.js";
 import { withGatewayServiceOperationLock } from "./service-operation-lock.js";
 import type {
   GatewayServiceCommandConfig,
@@ -118,6 +122,32 @@ describe("native service runtime pin persistence", () => {
     },
   );
 
+  it("reinstalls an app-owned Bun service as standalone and can roll back to Bun", async () => {
+    await withOpenClawTestState({ label: "pin-native-app-upgrade" }, async (state) => {
+      const scope = { kind: "gateway" as const, env: state.env };
+      const service = resolveGatewayService();
+      const bun = "/app/runtime/old/bin/bun";
+      const standalone = "/app/runtime/new/openclaw";
+      for (const programArguments of [
+        [bun, "/app/runtime/old/openclaw.mjs", "gateway"],
+        [standalone, "gateway"],
+        [bun, "/app/runtime/old/openclaw.mjs", "gateway"],
+      ]) {
+        const pin = { runtime: "bun" as const, path: programArguments[0]! };
+        await service.install({
+          env: state.env,
+          stdout: process.stdout,
+          programArguments,
+          runtimePinUpdate: {
+            expected: readDaemonRuntimePinForInstall(scope, native.command, true),
+            pin,
+          },
+        });
+        expect(native.command?.programArguments).toEqual(programArguments);
+        expect(readDaemonRuntimePin(scope, native.command).pin).toEqual(pin);
+      }
+    });
+  });
   it("keeps pin-unaware default writes read-only for runtime metadata", async () => {
     await withOpenClawTestState({ label: "pin-native-default" }, async (state) => {
       const service = resolveGatewayService();
