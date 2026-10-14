@@ -328,7 +328,7 @@ struct ManagedNodeGatewayMigrationTests {
             var operations = fixture.operations
             operations.install = { _, runtime in
                 let error = await GatewayLaunchAgentManager.runDaemonCommand(
-                    ["install", "--force", "--runtime", "bun", "--runtime-path", runtime.bun.path],
+                    ["install", "--force", "--runtime", "bun", "--runtime-path", runtime.executable.path],
                     runtime: runtime, checkCurrent: {
                         #expect(!FileManager.default.fileExists(atPath: databaseURL.path))
                         #expect(GatewayLaunchAgentManager.testingDaemonCommandCallsSnapshot().count == 1)
@@ -978,7 +978,7 @@ struct ManagedNodeGatewayMigrationTests {
             } else {
                 #expect(result == nil)
                 #expect(dispatched.count == 1)
-                #expect(dispatched.first.map { Array($0.prefix(2)) } == runtime.cliCommand)
+                #expect(dispatched.first.map { Array($0.prefix(1)) } == runtime.cliCommand)
             }
         }
     }
@@ -1162,9 +1162,9 @@ struct ManagedNodeGatewayMigrationTests {
         #expect(ManagedNodeGatewayMigration.runtimePinMatchesInstallation(
             nil, runtime: runtime, definition: "expected", allowMissing: true))
         for (path, binding, accepted) in [
-            (runtime.bun.path, "expected", true),
+            (runtime.executable.path, "expected", true),
             ("/operator/bin/bun", "expected", false),
-            (runtime.bun.path, "other-definition", false),
+            (runtime.executable.path, "other-definition", false),
         ] {
             let value = try JSONSerialization.data(withJSONObject: [
                 "version": 1,
@@ -1585,9 +1585,9 @@ extension AppStateIsolationTests {
             #expect(calls.last == install)
             let commands = GatewayLaunchAgentManager.testingResolvedDaemonCommandsSnapshot()
             #expect(commands.count == 4)
-            #expect(commands.map { Array($0.prefix(2)) } == [
-                fixture.cli.prefix, installer.cliCommand, fixture.cli.prefix, installer.cliCommand,
-            ])
+            #expect(commands.enumerated().map { index, command in
+                Array(command.prefix(index.isMultiple(of: 2) ? 2 : 1))
+            } == [fixture.cli.prefix, installer.cliCommand, fixture.cli.prefix, installer.cliCommand])
         }
     }
 
@@ -1656,7 +1656,7 @@ extension AppStateIsolationTests {
             let commands = GatewayLaunchAgentManager.testingResolvedDaemonCommandsSnapshot()
                 .filter { $0.contains("--deep") || $0.contains("install") }
             #expect(commands.count == (ownershipChange == "unchanged" ? 2 : 0))
-            #expect(commands.allSatisfy { Array($0.prefix(2)) == installer.cliCommand })
+            #expect(commands.allSatisfy { Array($0.prefix(1)) == installer.cliCommand })
             #expect(healthChecks == (ownershipChange == "unchanged" ? 1 : 0))
         }
     }
