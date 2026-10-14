@@ -72,14 +72,6 @@ function noteGatewayRuntime(
   const summary = formatRuntimeStatus(serviceRuntime);
   const hints = buildGatewayRuntimeHints(serviceRuntime, { platform: process.platform, env });
   const lines = summary ? [`Runtime: ${summary}`, ...hints] : hints;
-  const sqliteLibrary = ensureSqliteLibrarySelected();
-  if (sqliteLibrary.source !== "runtime") {
-    lines.push(
-      `SQLite (doctor process): ${sqliteLibrary.path} (${sqliteLibrary.version}, extension loading enabled)`,
-    );
-  } else if (sqliteLibrary.ignoredOverride) {
-    lines.push(`SQLite (doctor process): ${sqliteLibrary.ignoredOverride}; override ignored`);
-  }
   if (lines.length > 0) {
     note(lines.join("\n"), "Gateway");
   }
@@ -230,6 +222,15 @@ export async function maybeRepairGatewayDaemon(params: {
   healthOk: boolean;
   healthSkipped?: boolean;
 }) {
+  const sqliteLibrary = ensureSqliteLibrarySelected();
+  if (sqliteLibrary.source !== "runtime") {
+    note(
+      `SQLite (doctor process): ${sqliteLibrary.path} (${sqliteLibrary.version}, extension loading enabled)`,
+      "SQLite",
+    );
+  } else if (sqliteLibrary.ignoredOverride) {
+    note(`SQLite (doctor process): ${sqliteLibrary.ignoredOverride}; override ignored`, "SQLite");
+  }
   if (!isDefaultInstallIdentity(process.env)) {
     note(NON_DEFAULT_INSTALL_SERVICE_SKIP_REASON, "Gateway");
     return;
