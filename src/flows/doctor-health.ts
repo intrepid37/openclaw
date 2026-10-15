@@ -15,6 +15,7 @@ import { ConfigWritePostCommitError } from "../config/io.write-errors.js";
 import { resolveConfigPath, resolveStateDir } from "../config/paths.js";
 import { isTruthyEnvValue } from "../infra/env.js";
 import { withSqliteSnapshotFailureScope } from "../infra/sqlite-error-diagnostics.js";
+import { withSqliteReadOnlyWorkerScope } from "../infra/sqlite-readonly-worker.js";
 import type { AgentDatabaseMigrationTarget } from "../infra/state-migrations.media-persistence-targets.js";
 import { retainUpdateDoctorProcesses } from "../infra/update-doctor-process-custody.js";
 import {
@@ -33,9 +34,10 @@ import { createUpdateFailureFact } from "../infra/update-failure-facts.js";
 import { resolveUpdateRehearsalRoot } from "../infra/update-rehearsal-paths.js";
 import { withPluginLoadDiagnostics } from "../plugins/load-diagnostics.js";
 import type { PluginDiagnostic } from "../plugins/manifest-types.js";
-import { withCommandProcessScope } from "../process/exec-spawn.js";
+import { resolveCommandProcessSignal, withCommandProcessScope } from "../process/exec-spawn.js";
 import { withDeferredDebugProxyCapture } from "../proxy-capture/runtime-deferral.js";
 import type { RuntimeEnv } from "../runtime.js";
+import { getAsyncWorkSignal } from "../shared/async-work-scope.js";
 import { UpdateSchemaRefusalError } from "../state/openclaw-update-schema-refusal.js";
 import type { DoctorHealthFlowContext } from "./doctor-health-contributions.js";
 import { exitDoctorHealthFlow, showDoctorIntro, showDoctorOutro } from "./doctor-health-startup.js";
@@ -48,6 +50,8 @@ export async function runDoctorHealthFlow(
   writeAuthority?: UpdateDoctorWriteAuthority,
   databasePreflight?: DoctorDatabasePreflight,
 ) {
+  const signal = resolveCommandProcessSignal(getAsyncWorkSignal());
+  signal?.throwIfAborted();
   using custody = await retainUpdateDoctorProcesses(
     writeAuthority?.assertCurrent,
     writeAuthority?.commandAuthority,
@@ -109,6 +113,7 @@ export async function runDoctorHealthFlow(
   await withPluginGenerationSourceCustody(() =>
     custody ? withCommandProcessScope(run, undefined, custody) : run(),
   );
+  signal?.throwIfAborted();
   requestedExit?.();
 }
 
@@ -123,6 +128,7 @@ async function runDoctorHealthFlowWithResult(
   resumeCapture?: () => void,
   preCaptureRehearsalRoot?: string,
 ) {
+  const signal = resolveCommandProcessSignal(getAsyncWorkSignal());
   const {
     prepareDoctorHealthFlow,
     prepareDoctorInteractiveMaintenance,
@@ -223,6 +229,7 @@ async function runDoctorHealthFlowWithResult(
       }),
     );
     const runChecks = async () => {
+      signal?.throwIfAborted();
       const doctorRuntime = maintenance ? repairRuntime : effectiveRuntime;
       const { createDoctorPrompter } = await import("../commands/doctor-prompter.js");
       const { prepareDoctorDatabasePreflight } =
@@ -230,7 +237,7 @@ async function runDoctorHealthFlowWithResult(
       const prompter = createDoctorPrompter({
         runtime: doctorRuntime,
         options,
-        signal: maintenance?.signal,
+        signal: resolveCommandProcessSignal(maintenance?.signal ?? signal),
       });
       // Explicit repair never offers an update. Its current-state preflight remains
       // inside maintenance; diagnostic Doctor checks state before update admission.
@@ -274,7 +281,7 @@ async function runDoctorHealthFlowWithResult(
         runtime: doctorRuntime,
         json: options.json,
         postCoreSchemaRepair: writeAuthority?.postCoreSchemaRepair,
-        signal: maintenance?.signal,
+        signal: resolveCommandProcessSignal(maintenance?.signal ?? signal),
         onVerifiedBackup: (snapshots) => {
           verifiedSnapshots = snapshots;
         },
@@ -490,7 +497,16 @@ async function runDoctorHealthFlowWithResult(
     let failure: unknown;
     try {
       ctx = await withSqliteSnapshotFailureScope(() =>
-        maintenance ? maintenance.run(runChecks) : runChecks(),
+        maintenance
+          ? maintenance.run(runChecks)
+          : withCommandProcessScope(
+              () =>
+                withSqliteReadOnlyWorkerScope(
+                  runChecks,
+                  signal ? { signal, deadlineOwnedByCaller: false } : undefined,
+                ),
+              signal,
+            ),
       );
       if (ctx && maintenance && options.repair === true && sqliteNoCowPaths.length > 0) {
         if (

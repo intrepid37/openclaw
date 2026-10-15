@@ -11,10 +11,14 @@ import { runManagedCommand } from "./lib/managed-child-process.mts";
 const [source, ...flags] = process.argv.slice(2);
 assert.equal(process.platform, "darwin", "This proof requires macOS sandbox-exec and APFS.");
 assert(
-  source && flags.every((flag) => flag === "--deny-local-ipc"),
-  "Usage: node scripts/verify-standalone-doctor.mjs <standalone-directory> [--deny-local-ipc]",
+  source &&
+    flags.every(
+      (flag) => flag === "--deny-local-ipc" || flag === "--interrupt-on-snapshot-failure",
+    ),
+  "Usage: node scripts/verify-standalone-doctor.mjs <standalone-directory> [--deny-local-ipc|--interrupt-on-snapshot-failure]",
 );
-const denyLocalIpc = flags.includes("--deny-local-ipc");
+const interruptOnFailure = flags.includes("--interrupt-on-snapshot-failure");
+const denyLocalIpc = interruptOnFailure || flags.includes("--deny-local-ipc");
 const profile = "standalone-verify";
 // Darwin's sockaddr_un limit includes TMPDIR, the private directory, and socket name.
 const root = fs.realpathSync(fs.mkdtempSync("/private/tmp/oc-doctor-"));
@@ -98,6 +102,7 @@ ${
   const results = [];
   for (const args of [["--version"], ["gateway", "--help"], ["doctor", "--non-interactive"]]) {
     let output = "";
+    let interruptedAt;
     const started = performance.now();
     const code = await runManagedCommand({
       bin: "/usr/bin/sandbox-exec",
@@ -111,12 +116,30 @@ ${
         for (const stream of [child.stdout, child.stderr]) {
           stream.on("data", (data) => {
             output += data.toString();
+            if (
+              interruptOnFailure &&
+              interruptedAt === undefined &&
+              /inspection remains pending|listen EPERM|SQLite snapshot/iu.test(output)
+            ) {
+              interruptedAt = performance.now();
+              child.kill("SIGTERM");
+            }
           });
         }
       },
     });
     const doctor = args[0] === "doctor";
-    if (doctor && denyLocalIpc) {
+    const signalTerminationMs =
+      interruptedAt === undefined ? undefined : Math.round(performance.now() - interruptedAt);
+    if (doctor && interruptOnFailure) {
+      assert.notEqual(interruptedAt, undefined, output);
+      assert.equal(code, 143, output);
+      assert(
+        signalTerminationMs !== undefined && signalTerminationMs < 2_000,
+        `SIGTERM took ${signalTerminationMs}ms: ${output}`,
+      );
+      assert.doesNotMatch(output, /Doctor complete/u);
+    } else if (doctor && denyLocalIpc) {
       assert.equal(code, 1, output);
       assert.match(output, /snapshot|Spawn broker/iu);
       assert.doesNotMatch(output, /Doctor complete/u);
@@ -134,6 +157,7 @@ ${
       command: ["--profile", profile, ...args].join(" "),
       code,
       elapsedMs: Math.round(performance.now() - started),
+      ...(signalTerminationMs === undefined ? {} : { signalTerminationMs }),
     });
   }
   console.log(
