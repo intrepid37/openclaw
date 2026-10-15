@@ -1,4 +1,4 @@
-import { For, flush } from "solid-js";
+import { flush } from "solid-js";
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 import type { ChatAttachment } from "../../../lib/chat/chat-types.ts";
@@ -14,7 +14,7 @@ const longSelection = "Selected passage with enough words to exceed a compact pr
 const longComment =
   "Please verify the deployment checklist and retain the original context. ".repeat(24);
 let container: HTMLDivElement;
-let unmountComments: (() => void) | undefined;
+let comments: ReturnType<typeof mountSolid> | undefined;
 let originalTheme: string | undefined;
 let originalPalette: string | undefined;
 
@@ -28,8 +28,8 @@ beforeEach(async () => {
 
 afterEach(() => {
   removeChatSelectionPopup();
-  unmountComments?.();
-  unmountComments = undefined;
+  comments?.unmount();
+  comments = undefined;
   container.remove();
   if (originalTheme === undefined) {
     delete document.documentElement.dataset.themeMode;
@@ -45,19 +45,19 @@ afterEach(() => {
 
 function mountComments(count: number, top: number) {
   container.style.cssText = `position: fixed; right: 16px; top: ${top}px`;
-  unmountComments?.();
-  unmountComments = mountSolid(
+  comments?.unmount();
+  comments = mountSolid(
     () => (
       <CommentPreviewChip count={count}>
-        <ol class="chat-comment-preview__list">
-          <For each={Array.from({ length: count }, (_, index) => index)}>
-            {() => <CommentPreviewRow comment={{ text: longSelection, comment: longComment }} />}
-          </For>
+        <ol class="chat-comment-preview__list" role="list">
+          {Array.from({ length: count }, () => (
+            <CommentPreviewRow comment={{ text: longSelection, comment: longComment }} />
+          ))}
         </ol>
       </CommentPreviewChip>
     ),
     { container },
-  ).unmount;
+  );
   flush();
   return container.querySelector<HTMLElement>(".chat-selection-annotations__chip")!;
 }
