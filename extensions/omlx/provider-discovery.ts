@@ -39,11 +39,7 @@ export default {
     },
   },
   resolveSyntheticAuth: ({ providerConfig }) => {
-    if (
-      (providerConfig?.apiKey && providerConfig.apiKey !== OMLX_LOCAL_API_KEY) ||
-      (providerConfig?.request?.auth && providerConfig.request.auth.mode !== "provider-default") ||
-      hasOmlxAuthorization(providerConfig)
-    ) {
+    if (providerConfig?.apiKey && providerConfig.apiKey !== OMLX_LOCAL_API_KEY) {
       return undefined;
     }
     return {
@@ -56,14 +52,22 @@ export default {
     const { CUSTOM_LOCAL_AUTH_MARKER, findNormalizedProviderValue } =
       await import("openclaw/plugin-sdk/provider-auth");
     const providerConfig = findNormalizedProviderValue(config?.models?.providers, provider);
-    if (providerConfig?.apiKey !== OMLX_LOCAL_API_KEY) {
+    if (providerConfig?.apiKey && providerConfig.apiKey !== OMLX_LOCAL_API_KEY) {
       return undefined;
     }
     if (hasOmlxAuthorization(providerConfig, model.headers)) {
       // The generic marker clears Authorization downstream, including explicit headers.
-      return apiKey === CUSTOM_LOCAL_AUTH_MARKER ? { apiKey: OMLX_LOCAL_API_KEY } : undefined;
+      return { apiKey: OMLX_LOCAL_API_KEY };
     }
-    // Explicit keyless setup must not inherit a previous endpoint's stored credential.
-    return { apiKey: CUSTOM_LOCAL_AUTH_MARKER };
+    if (
+      providerConfig?.apiKey === OMLX_LOCAL_API_KEY ||
+      apiKey === OMLX_LOCAL_API_KEY ||
+      apiKey === CUSTOM_LOCAL_AUTH_MARKER ||
+      providerConfig?.request?.auth?.mode === "header"
+    ) {
+      // Explicit keyless or header auth must not inherit a stored bearer credential.
+      return { apiKey: CUSTOM_LOCAL_AUTH_MARKER };
+    }
+    return undefined;
   },
 } satisfies ProviderPlugin;

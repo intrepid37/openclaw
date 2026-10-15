@@ -1,5 +1,6 @@
-import type { OpenClawConfig } from "openclaw/plugin-sdk/plugin-entry";
+import type { OpenClawConfig, ProviderRuntimeModel } from "openclaw/plugin-sdk/plugin-entry";
 import { capturePluginRegistration } from "openclaw/plugin-sdk/plugin-test-runtime";
+import { CUSTOM_LOCAL_AUTH_MARKER } from "openclaw/plugin-sdk/provider-auth";
 import type { ModelProviderConfig } from "openclaw/plugin-sdk/provider-model-shared";
 import { withOpenClawTestState } from "openclaw/plugin-sdk/test-state";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -394,20 +395,148 @@ it("connects the registered setup and catalog hooks to the inference models endp
   expect(paths).toEqual(["/v1/models", "/v1/models"]);
 });
 
-it.each([
-  { request: { headers: { Authorization: "Bearer synthetic-proxy-key" } } },
-  { request: { auth: { mode: "authorization-bearer" as const, token: "synthetic-key" } } },
-])("respects explicit request authentication when resolving local auth", (configured) => {
+function chatModel(baseUrl: string): ProviderRuntimeModel {
+  return {
+    id: "fixture-chat",
+    name: "fixture-chat",
+    provider: "omlx",
+    api: "openai-completions",
+    baseUrl,
+    reasoning: false,
+    input: ["text"],
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: 32_768,
+    maxTokens: 8_192,
+  };
+}
+
+it.each<{
+  name: string;
+  baseUrl: string;
+  configured: Pick<ModelProviderConfig, "headers" | "request">;
+  sourceApiKey: string;
+  runtimeApiKey: string;
+}>([
+  {
+    name: "loopback Authorization with generic local auth",
+    baseUrl: "http://127.0.0.1:8000/v1",
+    configured: { headers: { Authorization: "Bearer fixture-request-key" } },
+    sourceApiKey: CUSTOM_LOCAL_AUTH_MARKER,
+    runtimeApiKey: "omlx-local",
+  },
+  {
+    name: "remote Authorization with plugin local auth",
+    baseUrl: "https://omlx.example.test/v1",
+    configured: { headers: { Authorization: "Bearer fixture-request-key" } },
+    sourceApiKey: "omlx-local",
+    runtimeApiKey: "omlx-local",
+  },
+  {
+    name: "loopback request header with profile auth",
+    baseUrl: "http://127.0.0.1:8000/v1",
+    configured: { request: { headers: { authorization: "Bearer fixture-request-key" } } },
+    sourceApiKey: "fixture-profile-key",
+    runtimeApiKey: "omlx-local",
+  },
+  {
+    name: "remote bearer auth with profile auth",
+    baseUrl: "https://omlx.example.test/v1",
+    configured: {
+      request: { auth: { mode: "authorization-bearer", token: "fixture-request-key" } },
+    },
+    sourceApiKey: "fixture-profile-key",
+    runtimeApiKey: "omlx-local",
+  },
+  {
+    name: "loopback custom header with profile auth",
+    baseUrl: "http://127.0.0.1:8000/v1",
+    configured: {
+      request: {
+        auth: { mode: "header", headerName: "X-oMLX-Key", value: "fixture-request-key" },
+      },
+    },
+    sourceApiKey: "fixture-profile-key",
+    runtimeApiKey: CUSTOM_LOCAL_AUTH_MARKER,
+  },
+  {
+    name: "remote custom header with plugin local auth",
+    baseUrl: "https://omlx.example.test/v1",
+    configured: {
+      request: {
+        auth: { mode: "header", headerName: "X-oMLX-Key", value: "fixture-request-key" },
+      },
+    },
+    sourceApiKey: "omlx-local",
+    runtimeApiKey: CUSTOM_LOCAL_AUTH_MARKER,
+  },
+])("admits header-only chat and prepares $name", async (scenario) => {
   const provider = capturePluginRegistration(plugin).providers[0];
+  const providerConfig: ModelProviderConfig = {
+    baseUrl: scenario.baseUrl,
+    api: "openai-completions",
+    models: [],
+    ...scenario.configured,
+  };
+  const config = { models: { providers: { omlx: providerConfig } } };
+  expect
+    .soft(
+      provider?.resolveSyntheticAuth?.({
+        provider: "omlx",
+        config,
+        providerConfig,
+      }),
+    )
+    .toEqual({ apiKey: "omlx-local", source: "oMLX local server", mode: "api-key" });
+  expect(
+    await provider?.prepareRuntimeAuth?.({
+      config,
+      env: {},
+      provider: "omlx",
+      modelId: "fixture-chat",
+      model: chatModel(scenario.baseUrl),
+      apiKey: scenario.sourceApiKey,
+      authMode: "api-key",
+    }),
+  ).toEqual({ apiKey: scenario.runtimeApiKey });
+});
+
+it("keeps configured keys and unoverridden profile credentials authoritative", async () => {
+  const provider = capturePluginRegistration(plugin).providers[0];
+  const baseUrl = "https://omlx.example.test/v1";
+  const configuredKey: ModelProviderConfig = {
+    baseUrl,
+    api: "openai-completions",
+    apiKey: "fixture-config-key",
+    headers: { Authorization: "Bearer fixture-request-key" },
+    models: [],
+  };
   expect(
     provider?.resolveSyntheticAuth?.({
       provider: "omlx",
-      config: {},
-      providerConfig: {
-        baseUrl: "http://127.0.0.1:8000/v1",
-        models: [],
-        ...configured,
-      },
+      config: { models: { providers: { omlx: configuredKey } } },
+      providerConfig: configuredKey,
     }),
   ).toBeUndefined();
+  for (const providerConfig of [
+    configuredKey,
+    { baseUrl, api: "openai-completions" as const, models: [] },
+    {
+      baseUrl,
+      api: "openai-completions" as const,
+      request: { auth: { mode: "provider-default" as const } },
+      models: [],
+    },
+  ]) {
+    expect(
+      await provider?.prepareRuntimeAuth?.({
+        config: { models: { providers: { omlx: providerConfig } } },
+        env: {},
+        provider: "omlx",
+        modelId: "fixture-chat",
+        model: chatModel(baseUrl),
+        apiKey: "fixture-profile-key",
+        authMode: "api-key",
+      }),
+    ).toBeUndefined();
+  }
 });

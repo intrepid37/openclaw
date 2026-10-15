@@ -421,8 +421,15 @@ describe("oMLX setup through the inference catalog", () => {
         },
       }),
     ).toEqual({ apiKey: CUSTOM_LOCAL_AUTH_MARKER });
+    expect(
+      await provider?.prepareRuntimeAuth?.({
+        ...runtimeContext,
+        config: {
+          models: { providers: { omlx: { ...providerConfig, apiKey: "new-server-key" } } },
+        },
+      }),
+    ).toBeUndefined();
     for (const authenticated of [
-      { ...providerConfig, apiKey: "new-server-key" },
       { ...providerConfig, headers: { Authorization: "Bearer new-header-key" } },
       {
         ...providerConfig,
@@ -434,7 +441,7 @@ describe("oMLX setup through the inference catalog", () => {
           ...runtimeContext,
           config: { models: { providers: { omlx: authenticated } } },
         }),
-      ).toBeUndefined();
+      ).toEqual({ apiKey: "omlx-local" });
     }
     const localHeaders = { Authorization: "Bearer local-header-key" };
     expect(
