@@ -161,11 +161,11 @@ it("keeps a native external panel link when it is the only Layout action", async
   onTestFinished(() => {
     Reflect.deleteProperty(HTMLElement.prototype, "checkVisibility");
   });
-  const panelDefinitions = sidebarPanelDefinitions().map((definition) =>
-    definition.slot === "conversation"
-      ? { ...definition, headerLink: { href: "https://example.test/panel", label: "Open panel" } }
-      : definition,
-  );
+  const panelDefinitions = sidebarPanelDefinitions();
+  panelDefinitions.find((definition) => definition.slot === "conversation")!.headerLink = {
+    href: "https://example.test/panel",
+    label: "Open panel",
+  };
   const mounted = mountChatPaneHeader([], { sidebarLayout: { columns: [] }, panelDefinitions });
   onTestFinished(mounted.unmount);
   const trigger = mounted.container.querySelector<HTMLButtonElement>(".chat-pane__layout-trigger")!;
