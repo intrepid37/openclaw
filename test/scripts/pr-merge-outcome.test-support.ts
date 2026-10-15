@@ -245,6 +245,11 @@ export function createMergeOutcomeFixtureHarness() {
         mergeStateStatus?: string;
       },
       settlementSleeps: [] as number[],
+      settlementCallOffsets: [] as number[],
+      projectionSettlement: null as null | {
+        seconds: number;
+        pr: { mergeable: string; mergeStateStatus: string };
+      },
       clockStep: 0,
       mainProofDelaySeconds: 0,
       mainProofDelayMain: "",
@@ -345,7 +350,15 @@ if(route==="watch") {
   if(args[1]!==s.pr.headRefOid) fail("stale CI head");
   process.exit(s.ciExit);
 }
-if(route==="sleep") {s.settlementSleeps.push(Number(args[0]));save();process.exit(0);}
+if(route==="sleep") {
+  s.settlementSleeps.push(Number(args[0]));
+  s.settlementCallOffsets.push(s.calls.length);
+  if(s.projectionSettlement&&s.settlementSleeps.reduce((total,seconds)=>total+seconds,0)>=s.projectionSettlement.seconds) {
+    Object.assign(s.pr,s.projectionSettlement.pr);
+    s.projectionSettlement=null;
+  }
+  save();process.exit(0);
+}
 s.nodeArgs=process.execArgv;
 s.calls.push([route,...args]);save();
 let inputPayload;
