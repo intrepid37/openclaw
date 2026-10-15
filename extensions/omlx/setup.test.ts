@@ -292,7 +292,7 @@ describe("oMLX setup through the inference catalog", () => {
                 tls: { cert: "old-client-cert", key: "old-client-key" },
                 proxy: {
                   mode: "explicit-proxy",
-                  url: "http://fixture-user:fixture-password@proxy.example.test",
+                  url: "http://proxy.example.test",
                   tls: { passphrase: "old-proxy-passphrase" },
                 },
               },
