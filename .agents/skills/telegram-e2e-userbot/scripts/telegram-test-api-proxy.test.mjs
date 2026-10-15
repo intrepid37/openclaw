@@ -229,21 +229,46 @@ test("proxy close cancels a pending retry_after wait", async (t) => {
   assert.equal(upstreamRequests, 1);
 });
 
-test("drain caps each attempt by the remaining budget", async (t) => {
-  const timeouts = [];
-  t.mock.method(AbortSignal, "timeout", (ms) => {
-    timeouts.push(ms);
-    return new AbortController().signal;
+test("drain abandons a stalled attempt at the budget deadline", async (t) => {
+  let now = 1_000_000;
+  t.mock.method(Date, "now", () => now);
+  const diagnostic = t.mock.method(console, "error", () => {});
+  let upstreamRequests = 0;
+  const proxy = await startTelegramTestApiProxy({
+    fetchImpl: async (_url, init) => {
+      upstreamRequests += 1;
+      if (upstreamRequests === 1) {
+        return new Response('{"ok":false,"error_code":429,"parameters":{"retry_after":119}}', {
+          status: 429,
+        });
+      }
+      // The second attempt stalls until the drain abandons it.
+      return await new Promise((_resolve, reject) => {
+        init.signal.addEventListener("abort", () => reject(init.signal.reason), { once: true });
+      });
+    },
+    // The wait overshoots to leave 1 ms of budget for the stalled attempt.
+    sleep: async (ms) => {
+      now += ms + 999;
+    },
   });
-  const { proxy, sleeps } = await startDrainProxy(t, [
-    [429, { ok: false, error_code: 429, parameters: { retry_after: 119 } }],
-    [200, { ok: true, result: [] }],
-  ]);
+  t.after(() => proxy.close());
 
-  await proxy.drainUpdates("123:ABC");
-
-  assert.deepEqual(sleeps, [119_000]);
-  assert.deepEqual(timeouts, [15_000, 1_000]);
+  await assert.rejects(
+    proxy.drainUpdates("123:ABC"),
+    /after 2 attempt\(s\); last result no HTTP response \(TIMEOUT\) within the 120s retry budget/u,
+  );
+  assert.equal(upstreamRequests, 2);
+  assert.deepEqual(JSON.parse(diagnostic.mock.calls.at(-1).arguments[0]), {
+    event: "telegram_test_api_drain_failure",
+    attempt: 2,
+    status: "none",
+    telegramErrorCode: "none",
+    retryAfterSeconds: "none",
+    retryable: true,
+    errorClass: "Error",
+    errorCode: "TIMEOUT",
+  });
 });
 
 test("logs only nonempty getUpdates counts and preserves response bytes", async (t) => {
