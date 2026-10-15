@@ -371,6 +371,7 @@ describePosix("prior-CI forward main admission", () => {
               ]
             : [{}, {}, {}, {}, { main }];
       if (stage === "settlement") {
+        state.projectionSettlement = { seconds: 2, pr: settled };
         state.restObservation = { main, pr: settled };
       }
     }
