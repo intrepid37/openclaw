@@ -27,9 +27,10 @@ import {
 } from "./runtime-config-capture-state.js";
 import { runtimeConfigPublication } from "./runtime-config-publication.js";
 import { configSnapshotsMatch, stableConfigStringify } from "./runtime-config-snapshot-match.js";
-import { runtimeSessionChangeScope } from "./runtime-session-changes.js";
+import { runtimeSessionPublicationChangeScope } from "./runtime-session-changes.js";
 import {
   hashRuntimeConfigValue,
+  hashRuntimeConfigPreparation,
   hashModelConfig,
   matchesRuntimeConfigPublicationFact,
   matchesRuntimeConfigValueFact,
@@ -234,10 +235,15 @@ function publishRuntimeConfigSnapshot(
     sourceFingerprint: sourceConfig ? sourceFact.fingerprint : null,
     updatedAtMs: Date.now(),
   };
-  const scope =
-    previousEditedInPlace || previousSourceEditedInPlace || !sourceMatchesPublished
-      ? "config"
-      : runtimeSessionChangeScope(runtimeConfigSnapshot, config);
+  const scope = runtimeSessionPublicationChangeScope({
+    previousRuntimeConfig: runtimeConfigSnapshot,
+    runtimeConfig: config,
+    previousSourceConfig: runtimeConfigSourceSnapshot,
+    sourceConfig,
+    runtimeUnchanged: valuesUnchanged || matchesPublished,
+    sourceUnchanged: sourceMatchesPublished,
+    previousEditedInPlace: previousEditedInPlace || previousSourceEditedInPlace,
+  });
   prepareRuntimePluginsConfig(config);
   runtimeConfigSnapshotGeneration += 1;
   clearExecutablePathCache();
@@ -278,12 +284,6 @@ export function registerRuntimeConfigSnapshotPreparer(
   };
 }
 
-function preparationFingerprint(config: OpenClawConfig): string {
-  return sha256Base64Url(
-    stableConfigStringify({ config, facts: serializeConfigResolutionFacts(config) }),
-  );
-}
-
 /** Prepare off the publication path; a superseded candidate must be discarded by its owner. */
 async function prepareRuntimeConfigSnapshot(
   inputConfig: OpenClawConfig,
@@ -298,7 +298,7 @@ async function prepareRuntimeConfigSnapshot(
   copyConfigResolutionFacts(factSource, config);
   const generation = runtimeConfigSnapshotGeneration;
   const preparerGeneration = runtimeConfigPreparerGeneration;
-  const fingerprint = preparationFingerprint(config);
+  const fingerprint = hashRuntimeConfigPreparation(config);
   const envFingerprint = context.env ? sha256Base64Url(stableConfigStringify(context.env)) : null;
   const prepared = await Promise.allSettled(
     [...runtimeConfigSnapshotPreparers].map(async ([prepare, options]) =>
@@ -317,7 +317,7 @@ async function prepareRuntimeConfigSnapshot(
     return (
       runtimeConfigSnapshotGeneration === generation &&
       runtimeConfigPreparerGeneration === preparerGeneration &&
-      preparationFingerprint(config) === fingerprint &&
+      hashRuntimeConfigPreparation(config) === fingerprint &&
       (context.env ? sha256Base64Url(stableConfigStringify(context.env)) : null) === envFingerprint
     );
   };

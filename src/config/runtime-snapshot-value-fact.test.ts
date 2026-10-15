@@ -21,6 +21,45 @@ afterEach(() => {
   resetConfigRuntimeState();
 });
 
+it.each<[string, OpenClawConfig, string, boolean]>([
+  [
+    "sidebar preferences",
+    { ui: { prefs: { sidebarEntries: ["sessions"] } } },
+    "config-presentation",
+    false,
+  ],
+  [
+    "agent identity",
+    { agents: { entries: { main: { identity: { name: "Renamed" } } } } },
+    "config-profiles",
+    false,
+  ],
+  [
+    "authored sidebar preferences",
+    { ui: { prefs: { sidebarEntries: ["sessions"] } } },
+    "config-presentation",
+    true,
+  ],
+  [
+    "authored agent identity",
+    { agents: { entries: { main: { identity: { name: "Renamed" } } } } },
+    "config-profiles",
+    true,
+  ],
+])("publishes the projection impact of %s", (_label, change, scope, authored) => {
+  const initial: OpenClawConfig = { agents: { entries: { main: {} } } };
+  setRuntimeConfigSnapshot(initial, authored ? structuredClone(initial) : undefined);
+  const published = vi.fn();
+  const stop = sessionChanges.subscribe(published);
+  try {
+    const next = { ...initial, ...change };
+    setRuntimeConfigSnapshot(next, authored ? structuredClone(next) : undefined);
+    expect(published).toHaveBeenCalledExactlyOnceWith({ all: true, scope });
+  } finally {
+    stop();
+  }
+});
+
 it("reuses publication hashes and model keys across equal mutable fleet clones", () => {
   const base = {
     agents: {
@@ -113,9 +152,25 @@ it.each(["added", "replaced", "removed"])(
     expect(resolveRuntimeModelConfigCacheKey(getRuntimeConfigSnapshot()!)).not.toBe(
       previousModelKey,
     );
-    expect(changes).toHaveBeenCalledExactlyOnceWith({ all: true, scope: "config" });
+    expect(changes).toHaveBeenCalledExactlyOnceWith({ all: true, scope: "config-presentation" });
   },
 );
+
+it("retains broad authored model-policy invalidation alongside runtime preferences", () => {
+  const source: OpenClawConfig = {
+    agents: { defaults: { model: { primary: "openai/first" } } },
+  };
+  setRuntimeConfigSnapshot({}, source);
+  const changes = vi.fn();
+  unregister.push(sessionChanges.subscribe(changes));
+
+  setRuntimeConfigSnapshot(
+    { ui: { prefs: { sidebarEntries: ["sessions"] } } },
+    { agents: { defaults: { model: { primary: "openai/second" } } } },
+  );
+
+  expect(changes).toHaveBeenCalledExactlyOnceWith({ all: true, scope: "config" });
+});
 
 it("restores captured authored policy after its live source was edited in place", () => {
   const source: OpenClawConfig = { plugins: { enabled: true } };

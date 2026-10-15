@@ -61,30 +61,6 @@ afterEach(() => {
 });
 
 describe("runtime snapshot state", () => {
-  it.each<[string, OpenClawConfig, string]>([
-    [
-      "sidebar preferences",
-      { ui: { prefs: { sidebarEntries: ["sessions"] } } },
-      "config-presentation",
-    ],
-    [
-      "agent identity",
-      { agents: { entries: { main: { identity: { name: "Renamed" } } } } },
-      "config-profiles",
-    ],
-  ])("publishes the projection impact of %s", (_label, change, scope) => {
-    const initial: OpenClawConfig = { agents: { entries: { main: {} } } };
-    setRuntimeConfigSnapshot(initial);
-    const published = vi.fn();
-    const stop = sessionChanges.subscribe(published);
-    try {
-      setRuntimeConfigSnapshot({ ...initial, ...change });
-      expect(published).toHaveBeenCalledExactlyOnceWith({ all: true, scope });
-    } finally {
-      stop();
-    }
-  });
-
   it("pins the first successful load in memory until the snapshot is cleared", () => {
     let freshPort = 18789;
     let loadCount = 0;
