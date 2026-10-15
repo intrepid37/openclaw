@@ -532,7 +532,8 @@ else if(args[0]==="api"&&args.includes("user")) {
 }
 else if(args[0]==="api"&&args.includes("repos/fixture/repo/pulls/123")) {
   if(s.repoAuthorityUnavailable) fail("repository metadata unavailable");
-  if(s.restObservation&&!s.restObservation.afterPolicyRead&&!s.restObservation.afterHistoricalRead&&s.restObservation.afterRestMainReads===undefined&&
+  // Projection hints cannot trigger a fault scheduled inside a complete REST observation.
+  if(s.restMainReads>0&&s.restObservation&&!s.restObservation.afterPolicyRead&&!s.restObservation.afterHistoricalRead&&s.restObservation.afterRestMainReads===undefined&&
     (s.quotaTriggered||(s.graphqlMergeProjection&&s.observationReads>0))) {
     applyRestObservation();
   }

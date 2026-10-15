@@ -183,6 +183,10 @@ describePosix("prior-CI forward main admission", () => {
       state.mainProofDelayMain = main;
       if (transport === "rest") {
         state.graphqlMergeProjection = { mergeStateStatus: "UNKNOWN" };
+        state.projectionSettlement = {
+          seconds: 4,
+          pr: { mergeable: "MERGEABLE", mergeStateStatus: "BLOCKED" },
+        };
         state.restObservations = [{}, {}, {}, ...observations];
       } else {
         state.observations = [{}, ...observations];

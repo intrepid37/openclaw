@@ -691,6 +691,11 @@ merge_wait_for_projection() {
       return 1
     fi
     [ "$delay" -ge 8 ] || delay=$((delay * 2))
+    # GraphQL's complete observation is already one request; only REST needs a cheap hint.
+    if [ "${MERGE_TRANSPORT:-rest}" != rest ] && [ "${MERGE_PRIOR_CI_REST_OBSERVATION:-false}" != true ]; then
+      MERGE_PROJECTION_DELAY="$delay"
+      return 0
+    fi
     response=$(merge_read projection "$pr") || {
       merge_outcome_stop "mergeability hint is unavailable; stopped before intent/dispatch"
       return 1
@@ -704,15 +709,16 @@ merge_wait_for_projection() {
       merge_outcome_stop "mergeability hint is invalid; stopped before intent/dispatch"
       return 1
     }
+    if printf '%s\n' "$projection" | jq -e '.mergeable == "UNKNOWN" or .mergeStateStatus == "UNKNOWN"' >/dev/null; then
+      continue
+    fi
     if [ "$(pr_merge_now)" -ge "$deadline" ]; then
       merge_outcome_stop "$label exceeded the 60s settle limit; stopped before intent/dispatch"
       return 1
     fi
-    if ! printf '%s\n' "$projection" | jq -e '.mergeable == "UNKNOWN" or .mergeStateStatus == "UNKNOWN"' >/dev/null; then
-      # A hint only wakes the caller's complete snapshot and authority checks.
-      MERGE_PROJECTION_DELAY="$delay"
-      return 0
-    fi
+    # A hint only wakes the caller's complete snapshot and authority checks.
+    MERGE_PROJECTION_DELAY="$delay"
+    return 0
   done
 }
 
