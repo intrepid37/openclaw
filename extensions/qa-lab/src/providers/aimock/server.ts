@@ -44,10 +44,6 @@ type AimockRequestObservation = { cursor: number } & (
   | { kind: "projected"; projection: AimockRequestProjection }
 );
 
-function requestMessages(body: ChatCompletionRequest | null | undefined) {
-  return Array.isArray(body?.messages) ? body.messages : [];
-}
-
 function extractToolFacts(entry: AimockChatJournalEntry): AimockToolFacts {
   const response = entry.response.fixture?.response as
     | {
@@ -56,7 +52,7 @@ function extractToolFacts(entry: AimockChatJournalEntry): AimockToolFacts {
     | undefined;
   const call = response?.toolCalls?.[0];
   const callId = call?.id ?? call?.callId ?? call?.toolCallId;
-  const output = requestMessages(entry.body).findLast(
+  const output = entry.body.messages.findLast(
     (message) => message?.role === "tool" && typeof message.tool_call_id === "string",
   );
   return {
@@ -70,8 +66,8 @@ function extractRequestFacts(
   body: ChatCompletionRequest,
   tools: AimockToolFacts,
 ): AimockRequestFacts {
-  const model = typeof body?.model === "string" ? body.model : "";
-  const messages = requestMessages(body);
+  const model = body.model;
+  const messages = body.messages;
   const user = messages.findLast(
     (message) =>
       message?.role === "user" &&

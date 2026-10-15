@@ -48,6 +48,26 @@ export type QaMockProviderDispatchResult = {
   responseKeepaliveMs?: number;
 };
 
+export type MockOutputItem =
+  | MockToolCallItem
+  | {
+      type: "message";
+      id: string;
+      role: "assistant";
+      status: "in_progress" | "completed";
+      phase?: "commentary" | "final_answer";
+      content: MockOutputText[];
+    }
+  | {
+      type: "reasoning";
+      id: string;
+      summary: readonly { readonly text: string }[];
+    }
+  | {
+      type: "compaction";
+      encrypted_content: string;
+    };
+
 export type StreamEvent =
   | {
       type: "response.created";
@@ -55,7 +75,7 @@ export type StreamEvent =
         id: string;
         object: "response";
         status: "in_progress";
-        output: Array<Record<string, unknown>>;
+        output: MockOutputItem[];
         created_at: number;
         model?: string;
       };
@@ -66,14 +86,14 @@ export type StreamEvent =
         id: string;
         object: "response";
         status: "failed";
-        output: Array<Record<string, unknown>>;
+        output: MockOutputItem[];
         error?: { code: string; message: string };
       };
     }
   | {
       type: "response.output_item.added";
       output_index: number;
-      item: Record<string, unknown>;
+      item: MockOutputItem;
     }
   | {
       type: "response.content_part.added" | "response.content_part.done";
@@ -125,7 +145,7 @@ export type StreamEvent =
   | {
       type: "response.output_item.done";
       output_index: number;
-      item: Record<string, unknown>;
+      item: MockOutputItem;
     }
   | {
       type: "response.completed";
@@ -133,7 +153,7 @@ export type StreamEvent =
         id: string;
         object: "response";
         status: "completed";
-        output: Array<Record<string, unknown>>;
+        output: MockOutputItem[];
         usage: {
           input_tokens: number;
           output_tokens: number;
@@ -153,7 +173,7 @@ export type MockAssistantMessageSpec = {
 
 export type MockToolCallItem = { id: string; call_id: string; name: string; namespace?: string } & (
   | { type: "function_call"; arguments: string }
-  | { type: "custom_tool_call"; input: string; status: "completed" }
+  | { type: "custom_tool_call"; input: string; status: "in_progress" | "completed" }
 );
 
 export type MockOpenAiCodeModeExecSurface = "native" | "guest";
@@ -174,6 +194,11 @@ export type MockOpenAiRequestSnapshot = QaMockRequestSnapshot & {
 };
 
 export type MockOpenAiRequestSnapshotInput = Omit<MockOpenAiRequestSnapshot, "cursor">;
+
+export type MockOpenAiPreparedRequest = Pick<
+  MockOpenAiRequestSnapshot,
+  "body" | "model" | "prompt" | "allInputText"
+> & { input: ResponsesInputItem[] };
 
 export type AnthropicMessageContentBlock =
   | { type: "text"; text: string }

@@ -1,5 +1,6 @@
 import type {
   MockAssistantMessageSpec,
+  MockOutputItem,
   MockOutputText,
   MockToolCallItem,
   StreamEvent,
@@ -9,7 +10,7 @@ export class MockResponseStream {
   private readonly response: {
     id: string;
     object: "response";
-    output: Array<Record<string, unknown>>;
+    output: MockOutputItem[];
   };
   private readonly events: StreamEvent[];
 
@@ -29,7 +30,7 @@ export class MockResponseStream {
     ];
   }
 
-  private start(item: Record<string, unknown>, initial = item) {
+  private start(item: MockOutputItem, initial = item) {
     const outputIndex = this.response.output.push(item) - 1;
     this.events.push({
       type: "response.output_item.added",
@@ -39,17 +40,17 @@ export class MockResponseStream {
     return outputIndex;
   }
 
-  private done(item: Record<string, unknown>, outputIndex: number) {
+  private done(item: MockOutputItem, outputIndex: number) {
     this.events.push({ type: "response.output_item.done", output_index: outputIndex, item });
   }
 
-  item(item: Record<string, unknown>, initial = item) {
+  item(item: MockOutputItem, initial = item) {
     this.done(item, this.start(item, initial));
   }
 
   message(spec: MockAssistantMessageSpec, complete = true) {
     const part: MockOutputText = { type: "output_text", text: spec.text, annotations: [] };
-    const item = {
+    const item: Extract<MockOutputItem, { type: "message" }> = {
       type: "message",
       id: spec.id,
       role: "assistant",
@@ -76,7 +77,7 @@ export class MockResponseStream {
   }
 
   tool(item: MockToolCallItem) {
-    const initial =
+    const initial: MockOutputItem =
       item.type === "function_call"
         ? { ...item, arguments: "" }
         : { ...item, input: "", status: "in_progress" };

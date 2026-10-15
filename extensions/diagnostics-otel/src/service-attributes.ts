@@ -164,8 +164,6 @@ export function securitySeverityText(
     case "low":
       return "INFO";
   }
-  const unreachable: never = severity;
-  return unreachable;
 }
 
 export function assignOtelSecurityAttributes(

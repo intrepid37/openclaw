@@ -119,32 +119,27 @@ export function buildReleaseHandoffMarkdown() {
 }
 
 export function extractPlannedTool(events: StreamEvent[]) {
-  const items = events.flatMap((event) =>
+  const item = events.flatMap((event) =>
     event.type === "response.output_item.done" &&
     (event.item.type === "function_call" || event.item.type === "custom_tool_call")
       ? [event.item]
       : [],
-  );
-  const named = items.find((item) => typeof item.name === "string");
-  const identified = items.find((item) => typeof item.call_id === "string");
-  const argumentsItem = items.find(
-    (item) => item.type === "custom_tool_call" || typeof item.arguments === "string",
-  );
+  )[0];
   let args: Record<string, unknown> | undefined;
-  if (argumentsItem?.type === "custom_tool_call") {
-    args = typeof argumentsItem.input === "string" ? { input: argumentsItem.input } : undefined;
-  } else if (typeof argumentsItem?.arguments === "string") {
+  if (item?.type === "custom_tool_call") {
+    args = { input: item.input };
+  } else if (item) {
     try {
-      const parsed: unknown = JSON.parse(argumentsItem.arguments);
+      const parsed: unknown = JSON.parse(item.arguments);
       args = parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : undefined;
     } catch {
       // Malformed arguments remain unavailable in the debug projection.
     }
   }
   return {
-    name: typeof named?.name === "string" ? named.name : undefined,
-    callId: typeof identified?.call_id === "string" ? identified.call_id : undefined,
-    itemId: typeof identified?.id === "string" ? identified.id : undefined,
+    name: item?.name,
+    callId: item?.call_id,
+    itemId: item?.id,
     args,
   };
 }

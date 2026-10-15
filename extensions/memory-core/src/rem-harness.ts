@@ -38,7 +38,7 @@ function resolveRemPreviewLimit(configLimit: number, cap: number | undefined): n
   if (configLimit <= 0) {
     return 0;
   }
-  if (typeof cap !== "number" || !Number.isFinite(cap)) {
+  if (cap === undefined || !Number.isFinite(cap)) {
     return configLimit;
   }
   return Math.max(0, Math.min(configLimit, Math.floor(cap)));
@@ -61,7 +61,7 @@ async function listWorkspaceDailyFiles(workspaceDir: string, limit?: number): Pr
   const files = entries
     .map((name) => path.join(memoryDir, name))
     .toSorted((left, right) => left.localeCompare(right));
-  if (typeof limit !== "number" || !Number.isFinite(limit) || limit <= 0 || files.length <= limit) {
+  if (limit === undefined || limit <= 0 || files.length <= limit) {
     return files;
   }
   return files.slice(-Math.floor(limit));
@@ -140,11 +140,9 @@ export async function previewRemHarness(params: PreviewRemHarnessOptions) {
     nowMs,
     ...(candidateLimit ? { limit: candidateLimit + 1 } : {}),
   });
-  const truncated = typeof candidateLimit === "number" && rankedCandidates.length > candidateLimit;
+  const truncated = candidateLimit !== undefined && rankedCandidates.length > candidateLimit;
   const candidates =
-    typeof candidateLimit === "number"
-      ? rankedCandidates.slice(0, candidateLimit)
-      : rankedCandidates;
+    candidateLimit !== undefined ? rankedCandidates.slice(0, candidateLimit) : rankedCandidates;
 
   return {
     workspaceDir: params.workspaceDir,

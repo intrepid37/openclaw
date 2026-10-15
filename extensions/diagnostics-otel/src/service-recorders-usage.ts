@@ -239,13 +239,12 @@ export function createUsageRecorders(runtime: DiagnosticsRecorderRuntime) {
         spanAttrs["output.value"] = outputValue;
       }
       const trackedSpan = runtime.getTrackedInternalOrTrustedSpan(evt, metadata);
-      const span =
-        trackedSpan ??
-        runtime.spanWithDuration("openclaw.message.processed", spanAttrs, evt.durationMs, {
-          parentContext: runtime.internalOrTrustedExplicitParentContext(evt, metadata),
-          endTimeMs: evt.ts,
-        });
-      runtime.setSpanAttrs(span, spanAttrs);
+      const span = trackedSpan
+        ? runtime.setSpanAttrs(trackedSpan, spanAttrs)
+        : runtime.spanWithDuration("openclaw.message.processed", spanAttrs, evt.durationMs, {
+            parentContext: runtime.internalOrTrustedExplicitParentContext(evt, metadata),
+            endTimeMs: evt.ts,
+          });
       if (evt.outcome === "error" && evt.error) {
         span.setStatus({ code: SpanStatusCode.ERROR, message: redactSensitiveText(evt.error) });
       }

@@ -12,7 +12,6 @@ import {
   TraceIdRatioBasedSampler,
 } from "@opentelemetry/sdk-trace-base";
 import { ATTR_SERVICE_NAME } from "@opentelemetry/semantic-conventions";
-import { asFiniteNumberInRange } from "openclaw/plugin-sdk/number-runtime";
 import type { OpenClawPluginService } from "openclaw/plugin-sdk/plugin-entry";
 import { registerUnhandledRejectionHandler } from "openclaw/plugin-sdk/runtime-env";
 import {
@@ -336,10 +335,10 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
       const endpoint = hasOwnedOtlpSignal
         ? normalizeOptionalString(otel.endpoint ?? sharedEnvEndpoint)
         : undefined;
-      const headers = otel.headers ?? undefined;
+      const headers = otel.headers;
       const serviceName =
         otel.serviceName?.trim() || process.env.OTEL_SERVICE_NAME || DEFAULT_SERVICE_NAME;
-      const sampleRate = asFiniteNumberInRange(otel.sampleRate, { min: 0, max: 1 });
+      const sampleRate = otel.sampleRate;
       const captureContent = otel.captureContent === true;
 
       const resource = resources.resourceFromAttributes({
@@ -404,7 +403,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
               )
             : undefined;
           const metricInterval =
-            typeof otel.flushIntervalMs === "number"
+            otel.flushIntervalMs !== undefined
               ? Math.max(1000, otel.flushIntervalMs)
               : readPositiveOtelNumber("OTEL_METRIC_EXPORT_INTERVAL", 60_000);
           let metricTimeout = readPositiveOtelNumber("OTEL_METRIC_EXPORT_TIMEOUT", 30_000);
@@ -447,7 +446,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
                 maxQueueSize,
               ),
               scheduledDelayMillis:
-                typeof otel.flushIntervalMs === "number"
+                otel.flushIntervalMs !== undefined
                   ? Math.max(1000, otel.flushIntervalMs)
                   : readPositiveOtelNumber("OTEL_BSP_SCHEDULE_DELAY", 5000),
               exportTimeoutMillis: readPositiveOtelNumber("OTEL_BSP_EXPORT_TIMEOUT", 30_000),

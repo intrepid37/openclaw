@@ -10,7 +10,7 @@ import {
 import { readMemoryHostEventRecords } from "openclaw/plugin-sdk/memory-host-events";
 import { openOpenClawStateDatabase } from "openclaw/plugin-sdk/plugin-state-test-runtime";
 import type { PluginDoctorStateMigrationContext } from "openclaw/plugin-sdk/runtime-doctor-migrations";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { stateMigrations } from "./doctor-contract-api.js";
 import {
   createDoctorContext,
@@ -353,6 +353,18 @@ describe("memory-core doctor dreaming migration", () => {
       context: context(),
     };
   }
+
+  it("reports unreadable legacy sidecar discovery instead of treating it as empty", async () => {
+    const failure = Object.assign(new Error("fixture discovery denied"), { code: "EACCES" });
+    const readdir = vi.spyOn(fs, "readdir").mockRejectedValueOnce(failure);
+    try {
+      await expect(legacyMemoryIndexMigration().detectLegacyState(migrationParams())).rejects.toBe(
+        failure,
+      );
+    } finally {
+      readdir.mockRestore();
+    }
+  });
 
   it("imports legacy memory host events into plugin state", async () => {
     await writeEvents(eventPath, [hostEvent("sqlite policy")]);
@@ -736,58 +748,6 @@ describe("memory-core doctor dreaming migration", () => {
       warnings: [],
     });
     expect(await readMemoryHostEventRecords({ workspaceDir, env })).toEqual(recovered);
-  });
-
-  it("leaves legacy host events in place when plugin-wide SQLite capacity is exhausted", async () => {
-    await writeEvents(eventPath, [hostEvent("sqlite capacity")]);
-    const params = migrationParams();
-    params.context = {
-      ...params.context,
-      getPluginStateCapacity: () => ({ liveEntries: 50_000, maxEntries: 50_000 }),
-    };
-
-    const result = await hostEventsMigration().migrateLegacyState(params);
-
-    expect(result.changes).toEqual([]);
-    expect(result.warnings).toEqual([expect.stringContaining("no room for its workspace cursor")]);
-    await fs.access(eventPath);
-    await expect(fs.access(`${eventPath}.migrated`)).rejects.toMatchObject({ code: "ENOENT" });
-  });
-
-  it("reserves plugin-wide capacity for the migrated workspace cursor and checkpoint", async () => {
-    const events = Array.from({ length: 3 }, (_, index) => hostEvent(`capacity-${index}`));
-    await writeEvents(eventPath, events);
-    const params = migrationParams();
-    params.context = {
-      ...params.context,
-      getPluginStateCapacity: () => ({ liveEntries: 49_997, maxEntries: 50_000 }),
-    };
-
-    const result = await hostEventsMigration().migrateLegacyState(params);
-
-    expect(result.warnings).toEqual([]);
-    expect(result.changes).toEqual([
-      "Migrated Memory Core host events -> SQLite plugin state (1 new row(s))",
-      expect.stringContaining("Archived Memory Core host events legacy source"),
-    ]);
-    await expect(readMemoryHostEventRecords({ workspaceDir, env })).resolves.toMatchObject([
-      { query: "capacity-2" },
-    ]);
-    const cursors = await context()
-      .openPluginStateKeyedStore<{ kind: "cursor"; lastSequence: number }>({
-        namespace: "memory-host.event-cursors",
-        maxEntries: 1_000,
-      })
-      .entries();
-    expect(cursors).toHaveLength(1);
-    const checkpoints = await context()
-      .openPluginStateKeyedStore({
-        namespace: "memory-host.event-migration-checkpoints",
-        maxEntries: 10_000,
-        overflowPolicy: "reject-new",
-      })
-      .entries();
-    expect(checkpoints).toHaveLength(1);
   });
 
   it("retires an empty legacy memory host event source without claiming an import", async () => {

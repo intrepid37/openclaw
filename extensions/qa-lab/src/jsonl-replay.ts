@@ -119,12 +119,6 @@ function defaultRunCell(): Promise<RuntimeParityScenarioExecution> {
   );
 }
 
-function assertSupportedRuntimePair(runtimePair: JsonlReplayInput["runtimePair"]) {
-  if (runtimePair[0] !== "openclaw" || runtimePair[1] !== "codex") {
-    throw new Error(`unsupported jsonl replay runtime pair: ${runtimePair.join(",")}`);
-  }
-}
-
 export function createMockJsonlReplayCellRunner(): JsonlReplayCellRunner {
   return async ({ runtime, turn }) => ({
     status: "pass",
@@ -148,7 +142,6 @@ export async function runJsonlReplay(
   input: JsonlReplayInput,
   options: JsonlReplayOptions = {},
 ): Promise<JsonlReplayResult> {
-  assertSupportedRuntimePair(input.runtimePair);
   const directory = path.resolve(input.directory);
   const transcriptPaths = await listJsonlFiles(directory);
   const runCell = options.runCell ?? defaultRunCell;

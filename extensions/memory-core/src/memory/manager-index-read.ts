@@ -45,6 +45,4 @@ export function readMemoryIndex(db: DatabaseSync, command: MemoryIndexReadComman
           : ("current" as const),
       };
   }
-  const unreachable: never = command;
-  return unreachable;
 }

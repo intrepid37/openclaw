@@ -252,9 +252,7 @@ export function buildQaToolSearchArgs(
 ): Record<string, unknown> {
   const nativeWorkspaceBehavior = readQaNativeWorkspaceBehaviorFromPrompt(prompt);
   if (nativeWorkspaceBehavior?.providerToolName === targetTool) {
-    return structuredClone(
-      failureMode ? nativeWorkspaceBehavior.failureArgs : nativeWorkspaceBehavior.happyArgs,
-    );
+    return failureMode ? nativeWorkspaceBehavior.failureArgs : nativeWorkspaceBehavior.happyArgs;
   }
   if (targetTool === "ls") {
     return { path: failureMode ? "runtime-tool-fixture-missing-directory" : "." };
@@ -347,7 +345,7 @@ export function buildQaToolSearchArgs(
   const args = Object.hasOwn(RUNTIME_TOOL_SUCCESS_ARGS, targetTool)
     ? RUNTIME_TOOL_SUCCESS_ARGS[targetTool]
     : undefined;
-  return args ? structuredClone(args) : { marker: "normal" };
+  return args ?? { marker: "normal" };
 }
 
 export function isActiveMemorySubagentPrompt(text: string) {

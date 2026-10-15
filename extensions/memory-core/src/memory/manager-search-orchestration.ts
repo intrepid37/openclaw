@@ -133,10 +133,9 @@ export abstract class MemorySearchOrchestration extends MemoryKeywordRetrieval {
       sourceFilterList.length === 1 &&
       sourceFilterList[0] === "sessions";
     const keywordOptions = { boostFallbackRanking: true, signal: opts?.signal, fuseRecallMetadata };
-    const database = this.publishedDatabase;
     const assertReadOwner = () => {
       opts?.signal?.throwIfAborted();
-      if (!database.isOpen || this.publishedDatabase !== database) {
+      if (!this.publishedDatabase.isOpen) {
         throw new Error("Memory retrieval changed its captured database owner");
       }
     };

@@ -38,7 +38,6 @@ import type {
   MemoryPublicationState,
 } from "./manager-publication-task.js";
 import { MEMORY_INDEX_WRITE_SCOPE } from "./manager-publication-task.js";
-import { memoryEmbeddingCacheFitsInline } from "./manager-publication-transfer.js";
 import {
   initializePublishedMemory,
   publishMemoryEmbeddingCache,
@@ -606,17 +605,13 @@ export class MemoryIndexDatabase {
     assertCurrent: () => void,
     prepare: () => boolean,
   ): Promise<boolean | undefined> {
-    const publish = (scope: PublicationScope) =>
-      publishMemoryEmbeddingCache({
-        scope,
-        mutation,
-        prepare,
-        retry: (run, prepareRetry) => this.retryPublication(run, prepareRetry),
-      });
-    return mutation.kind === "clear" ||
-      memoryEmbeddingCacheFitsInline(mutation.header, mutation.entries)
-      ? publish({ execute: (command) => this.executePublication(command, assertCurrent) })
-      : this.runPublication(publish, assertCurrent);
+    return publishMemoryEmbeddingCache({
+      mutation,
+      prepare,
+      execute: (command) => this.executePublication(command, assertCurrent),
+      run: (operation) => this.runPublication(operation, assertCurrent),
+      retry: (run, prepareRetry) => this.retryPublication(run, prepareRetry),
+    });
   }
 
   async replaceSource(

@@ -272,9 +272,7 @@ export function mergeRecentDistinct(
   nextValue: string,
   limit: number,
 ): string[] {
-  const next = [
-    ...new Set(existing.filter((value) => typeof value === "string" && value.length > 0)),
-  ];
+  const next = [...new Set(existing.filter((value) => value.length > 0))];
   if (nextValue && !next.includes(nextValue)) {
     next.push(nextValue);
   }
@@ -478,12 +476,6 @@ export function toFiniteNonNegativeInt(value: unknown, fallback = 0): number {
 }
 
 export function calculateRecencyComponent(ageDays: number, halfLifeDays: number): number {
-  if (!Number.isFinite(ageDays) || ageDays < 0) {
-    return 1;
-  }
-  if (!Number.isFinite(halfLifeDays) || halfLifeDays <= 0) {
-    return 1;
-  }
   const lambda = Math.LN2 / halfLifeDays;
   return Math.exp(-lambda * ageDays);
 }

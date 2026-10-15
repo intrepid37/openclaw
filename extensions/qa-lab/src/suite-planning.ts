@@ -190,17 +190,15 @@ const QA_GATEWAY_CONFIG_SELECTED_ACCOUNT_KEY = "$selectedAccount";
 // Scenario patches resolve this reserved object key against the adapter's selected account before
 // merging, so CLI account overrides cannot leave configuration on an inactive default account.
 function resolveQaGatewayConfigPatchSelectedAccount(
-  patch: unknown,
+  patch: Record<string, unknown>,
   selectedAccountId: string,
-): unknown {
-  if (Array.isArray(patch)) {
-    return patch.map((entry) =>
-      resolveQaGatewayConfigPatchSelectedAccount(entry, selectedAccountId),
-    );
-  }
-  if (!isRecord(patch)) {
-    return patch;
-  }
+): Record<string, unknown> {
+  const resolveValue = (value: unknown): unknown =>
+    Array.isArray(value)
+      ? value.map(resolveValue)
+      : isRecord(value)
+        ? resolveQaGatewayConfigPatchSelectedAccount(value, selectedAccountId)
+        : value;
   const resolved: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(patch)) {
     if (isQaMergePatchBlockedKey(key)) {
@@ -210,7 +208,7 @@ function resolveQaGatewayConfigPatchSelectedAccount(
     Object.defineProperty(resolved, resolvedKey, {
       configurable: true,
       enumerable: true,
-      value: resolveQaGatewayConfigPatchSelectedAccount(value, selectedAccountId),
+      value: resolveValue(value),
       writable: true,
     });
   }
@@ -229,16 +227,15 @@ function collectQaSuiteGatewayConfigPatches(
   const resolvedSelectedAccountId = selectedAccountId.trim() || "sut";
   const patches: Record<string, unknown>[] = [];
   for (const scenario of scenarios) {
-    if (!isRecord(scenario.gatewayConfigPatch)) {
+    if (scenario.gatewayConfigPatch === undefined) {
       continue;
     }
-    const resolvedPatch = resolveQaGatewayConfigPatchSelectedAccount(
-      scenario.gatewayConfigPatch,
-      resolvedSelectedAccountId,
+    patches.push(
+      resolveQaGatewayConfigPatchSelectedAccount(
+        scenario.gatewayConfigPatch,
+        resolvedSelectedAccountId,
+      ),
     );
-    if (isRecord(resolvedPatch)) {
-      patches.push(resolvedPatch);
-    }
   }
   return patches;
 }
@@ -333,7 +330,7 @@ function scenarioRequiresIsolatedQaSuiteWorker(scenario: QaSeedScenario) {
     // Transport policy is fixed when the gateway starts; sharing it would leak routing rules.
     scenario.execution.transportPolicy !== undefined ||
     scenario.execution.config?.agentE2e === true ||
-    isRecord(scenario.gatewayConfigPatch) ||
+    scenario.gatewayConfigPatch !== undefined ||
     scenario.gatewayRuntime !== undefined ||
     (scenario.plugins?.length ?? 0) > 0 ||
     normalizeLowercaseStringOrEmpty(scenario.surface) === "memory" ||
@@ -367,7 +364,7 @@ function normalizeQaSuiteConcurrency(
 ) {
   const envValue = parseStrictNonNegativeInteger(process.env.OPENCLAW_QA_SUITE_CONCURRENCY);
   const raw =
-    typeof value === "number" && Number.isFinite(value)
+    value !== undefined && Number.isFinite(value)
       ? value
       : envValue !== undefined
         ? envValue

@@ -160,7 +160,7 @@ export async function reserveMemoryEntryOrigins(params: {
   }[];
 }): Promise<() => Promise<void>> {
   const previousLines = params.previousMemory.replace(/\r\n/gu, "\n").split("\n");
-  const operationParents = params.operations.map((operation) => {
+  const operations = params.operations.map((operation) => {
     const parentKeys = new Set([operation.candidateKey]);
     for (const entry of operation.priorEntries) {
       const entryIndex = previousLines.findIndex((line) => line.trim() === entry);
@@ -172,10 +172,9 @@ export async function reserveMemoryEntryOrigins(params: {
         parentKeys.add(parentKey);
       }
     }
-    return { operation: { ...operation, priorEntries: [...operation.priorEntries] }, parentKeys };
+    return { entryKey: operation.candidateKey, parentKeys: [...parentKeys] };
   });
-  const affectedKeys = [...new Set(operationParents.flatMap(({ parentKeys }) => [...parentKeys]))];
-  if (affectedKeys.length === 0) {
+  if (operations.length === 0) {
     return async () => {};
   }
   const owners = [...new Set(params.agentIds)].toSorted().map(captureMemoryAgentDatabaseOptions);
@@ -212,10 +211,7 @@ export async function reserveMemoryEntryOrigins(params: {
             type: "reserve",
             input: {
               agentId: options.agentId,
-              operations: operationParents.map(({ operation, parentKeys }) => ({
-                entryKey: operation.candidateKey,
-                parentKeys: [...parentKeys],
-              })),
+              operations,
             },
           },
           assertCurrent,

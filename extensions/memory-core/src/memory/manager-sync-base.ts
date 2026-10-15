@@ -94,7 +94,7 @@ const reindexDatabase = new AsyncLocalStorage<{
 }>();
 
 export abstract class MemoryManagerSyncBase {
-  protected abstract publishedDatabase: MemoryIndexDatabase;
+  protected abstract readonly publishedDatabase: MemoryIndexDatabase;
   protected closed = false;
 
   protected assertDatabaseMutationCurrent(database: MemoryIndexDatabase): void {
@@ -142,10 +142,13 @@ export abstract class MemoryManagerSyncBase {
       // Publication attaches the finished file only after its writer closes.
       await database.closeShadow();
       return result;
-    } finally {
+    } catch (error) {
       try {
         await database.closeShadow();
-      } catch {}
+      } catch {
+        // Preserve the original reindex or publication-close failure.
+      }
+      throw error;
     }
   }
 

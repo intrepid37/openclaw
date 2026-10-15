@@ -82,7 +82,11 @@ export abstract class MemoryManagerEmbeddingCacheOps extends MemoryManagerSyncOp
       : new Map<string, number[]>();
     // Cache hits and new batches must inhabit the same vector space during a sync.
     for (const [hash, embedding] of cached) {
-      if (!isValidMemoryEmbedding(embedding, generation.embeddingDimensions)) {
+      if (
+        embedding.length === 0 ||
+        (generation.embeddingDimensions !== undefined &&
+          embedding.length !== generation.embeddingDimensions)
+      ) {
         cached.delete(hash);
       } else {
         generation.embeddingDimensions ??= embedding.length;

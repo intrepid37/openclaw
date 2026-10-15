@@ -11,9 +11,11 @@ import {
   MEMORY_DREAMING_SYSTEM_EVENT_TEXT,
   type resolveMemoryDeepDreamingConfig,
 } from "openclaw/plugin-sdk/memory-core-host-status";
-import type { OpenClawPluginApi } from "openclaw/plugin-sdk/plugin-entry";
+import type {
+  OpenClawPluginApi,
+  OpenClawPluginServiceContext,
+} from "openclaw/plugin-sdk/plugin-entry";
 import {
-  isRecord,
   normalizeLowercaseStringOrEmpty,
   normalizeOptionalString,
 } from "openclaw/plugin-sdk/string-coerce-runtime";
@@ -175,14 +177,8 @@ function buildManagedDreamingPatch(
 
 function sortManagedJobs(managed: ManagedCronJobLike[]): ManagedCronJobLike[] {
   return managed.toSorted((a, b) => {
-    const aCreated =
-      typeof a.createdAtMs === "number" && Number.isFinite(a.createdAtMs)
-        ? a.createdAtMs
-        : Number.MAX_SAFE_INTEGER;
-    const bCreated =
-      typeof b.createdAtMs === "number" && Number.isFinite(b.createdAtMs)
-        ? b.createdAtMs
-        : Number.MAX_SAFE_INTEGER;
+    const aCreated = a.createdAtMs ?? Number.MAX_SAFE_INTEGER;
+    const bCreated = b.createdAtMs ?? Number.MAX_SAFE_INTEGER;
     if (aCreated !== bCreated) {
       return aCreated - bCreated;
     }
@@ -190,20 +186,10 @@ function sortManagedJobs(managed: ManagedCronJobLike[]): ManagedCronJobLike[] {
   });
 }
 
-function isCronServiceLike(candidate: unknown): candidate is CronServiceLike {
-  return (
-    isRecord(candidate) &&
-    (candidate.isEnabled === undefined || typeof candidate.isEnabled === "function") &&
-    typeof candidate.list === "function" &&
-    typeof candidate.add === "function" &&
-    typeof candidate.update === "function" &&
-    typeof candidate.remove === "function"
-  );
-}
-
-export function resolveCronServiceFromGatewayContext(context: { getCron?: () => unknown }) {
-  const cron = context.getCron?.();
-  return isCronServiceLike(cron) ? cron : null;
+export function resolveCronServiceFromGatewayContext(
+  context: Pick<OpenClawPluginServiceContext, "getCron">,
+) {
+  return context.getCron?.() ?? null;
 }
 
 export async function reconcileShortTermDreamingCronJob(params: {

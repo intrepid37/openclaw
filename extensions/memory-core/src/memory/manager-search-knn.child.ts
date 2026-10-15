@@ -21,25 +21,9 @@ export type VectorKnnChildInput = {
   request: VectorKnnRequest;
 };
 
-type VectorKnnChildResult =
+export type VectorKnnChildResult =
   | { status: "ok"; value: VectorKnnResponse }
   | { status: "failed"; error: string };
-
-function isChildInput(value: unknown): value is VectorKnnChildInput {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-  // SAFETY: the object guard above permits explicit validation of every field read below.
-  const input = value as Partial<VectorKnnChildInput>;
-  return (
-    typeof input.databasePath === "string" &&
-    input.databasePath.length > 0 &&
-    (input.sqliteLibraryPath === undefined ||
-      (typeof input.sqliteLibraryPath === "string" && input.sqliteLibraryPath.trim().length > 0)) &&
-    Boolean(input.request) &&
-    typeof input.request === "object"
-  );
-}
 
 async function run(input: VectorKnnChildInput): Promise<VectorKnnResponse> {
   ensureSqliteLibrarySelected({ explicitPath: input.sqliteLibraryPath });
@@ -92,12 +76,9 @@ for await (const chunk of process.stdin) {
   if (newline !== chunk.length - 1) {
     throw new Error("invalid memory vector KNN child framing");
   }
-  const input: unknown = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  const input: VectorKnnChildInput = JSON.parse(Buffer.concat(chunks).toString("utf8"));
   chunks.length = 0;
   inputBytes = 0;
-  if (!isChildInput(input)) {
-    throw new Error("invalid memory vector KNN child input");
-  }
   try {
     // Reopen for each query so publication and path replacement stay visible.
     writeResult({ status: "ok", value: await run(input) });

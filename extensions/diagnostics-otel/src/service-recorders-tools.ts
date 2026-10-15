@@ -95,7 +95,6 @@ export function createToolAndSystemRecorders(runtime: DiagnosticsRecorderRuntime
         parentContext: runtime.activeTrustedParentContext(evt, metadata),
         endTimeMs: evt.ts,
       });
-      runtime.setSpanAttrs(span, spanAttrs);
       span.end(evt.ts);
     },
     recordToolExecutionStarted(
@@ -151,13 +150,13 @@ export function createToolAndSystemRecorders(runtime: DiagnosticsRecorderRuntime
         spanAttrs["openclaw.errorCode"] = normalizeDiagnosticValue(evt.errorCode, "other");
       }
       assignOtelToolContentAttributes(spanAttrs, toolContent, runtime.captureContent);
-      const span =
-        runtime.takeTrackedTrustedSpan(evt, metadata) ??
-        runtime.spanWithDuration("openclaw.tool.execution", spanAttrs, evt.durationMs, {
-          parentContext: runtime.activeTrustedParentContext(evt, metadata),
-          endTimeMs: toolTimestampMs(evt),
-        });
-      runtime.setSpanAttrs(span, spanAttrs);
+      const trackedSpan = runtime.takeTrackedTrustedSpan(evt, metadata);
+      const span = trackedSpan
+        ? runtime.setSpanAttrs(trackedSpan, spanAttrs)
+        : runtime.spanWithDuration("openclaw.tool.execution", spanAttrs, evt.durationMs, {
+            parentContext: runtime.activeTrustedParentContext(evt, metadata),
+            endTimeMs: toolTimestampMs(evt),
+          });
       if (evt.type === "tool.execution.error") {
         span.setStatus({
           code: SpanStatusCode.ERROR,
@@ -185,13 +184,13 @@ export function createToolAndSystemRecorders(runtime: DiagnosticsRecorderRuntime
       };
       runtime.addRunAttrs(spanAttrs, evt);
       assignOtelToolIdentityAttributes(spanAttrs, evt);
-      const span =
-        runtime.takeTrackedTrustedSpan(evt, metadata) ??
-        runtime.spanWithDuration("openclaw.tool.execution", spanAttrs, 0, {
-          parentContext: runtime.activeTrustedParentContext(evt, metadata),
-          endTimeMs: toolTimestampMs(evt),
-        });
-      runtime.setSpanAttrs(span, spanAttrs);
+      const trackedSpan = runtime.takeTrackedTrustedSpan(evt, metadata);
+      const span = trackedSpan
+        ? runtime.setSpanAttrs(trackedSpan, spanAttrs)
+        : runtime.spanWithDuration("openclaw.tool.execution", spanAttrs, 0, {
+            parentContext: runtime.activeTrustedParentContext(evt, metadata),
+            endTimeMs: toolTimestampMs(evt),
+          });
       span.end(toolTimestampMs(evt));
     },
     recordPayloadLarge(evt: Extract<DiagnosticEventPayload, { type: "payload.large" }>) {

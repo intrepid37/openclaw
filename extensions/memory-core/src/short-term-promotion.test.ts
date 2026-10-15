@@ -95,7 +95,7 @@ function recordMemoryRecalls(
   query: string,
   results: RecallResult[],
   options: Omit<RecordRecallParams, "workspaceDir" | "query" | "results"> = {},
-): Promise<void> {
+): Promise<number> {
   return recordShortTermRecalls({ ...options, workspaceDir, query, results });
 }
 

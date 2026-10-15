@@ -559,8 +559,8 @@ export function createMemoryGetTool(options: MemoryToolOptions) {
         const { readAgentMemoryFile } = await loadMemoryToolRuntime();
         return await executeMemoryReadResult({
           relPath,
-          from: from ?? undefined,
-          lines: lines ?? undefined,
+          from,
+          lines,
           agentId,
           agentSessionKey: options.agentSessionKey,
           sandboxed: options.sandboxed,
@@ -571,8 +571,8 @@ export function createMemoryGetTool(options: MemoryToolOptions) {
               cfg,
               agentId,
               relPath,
-              from: from ?? undefined,
-              lines: lines ?? undefined,
+              from,
+              lines,
             }),
         });
       },

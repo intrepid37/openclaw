@@ -715,9 +715,7 @@ export async function startQaLabServer(
                 reportPath: result.reportPath,
                 summaryPath: result.summaryPath,
                 watchUrl:
-                  "watchUrl" in result && typeof result.watchUrl === "string"
-                    ? result.watchUrl
-                    : (labHandle?.baseUrl ?? publicBaseUrl),
+                  "watchUrl" in result ? result.watchUrl : (labHandle?.baseUrl ?? publicBaseUrl),
               };
               latestReport = {
                 outputPath: result.reportPath,

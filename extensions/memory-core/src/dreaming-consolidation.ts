@@ -394,8 +394,9 @@ export async function consolidateMemory(params: {
   memoryFileMaxChars?: number;
   maxPromotedSnippetTokens?: number;
   nowMs: number;
+  timezone?: string;
   logger: Logger;
-}): Promise<MemoryConsolidationPlan | null> {
+}): Promise<(MemoryConsolidationPlan & { result: MemoryConsolidationResult }) | null> {
   const candidates = filterConsolidationCandidates(params.candidates);
   if (candidates.length === 0) {
     return null;
@@ -462,6 +463,7 @@ export async function consolidateMemory(params: {
     existingMemory: params.existingMemory,
     plan,
     nowMs: params.nowMs,
+    timezone: params.timezone,
     memoryFileMaxChars: params.memoryFileMaxChars,
     maxPriorEntryLossFraction: params.maxPriorEntryLossFraction,
   });
@@ -471,5 +473,5 @@ export async function consolidateMemory(params: {
     );
     return null;
   }
-  return plan;
+  return { ...plan, result: aggregate };
 }

@@ -47,6 +47,8 @@ export function inspectMemoryIndexPresenceInWorker(databasePath: string): boolea
   } finally {
     try {
       db?.close();
-    } catch {}
+    } catch {
+      // A best-effort read-only presence probe must not fail status reporting.
+    }
   }
 }

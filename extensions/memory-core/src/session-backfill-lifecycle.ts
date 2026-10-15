@@ -128,7 +128,7 @@ export async function rewindSessionBackfillIngestionState(params: {
     );
   }
 
-  const seenMessages = { ...state.seenMessages };
+  const seenMessages = state.seenMessages;
   for (const [scope, removedHashes] of removedHashesByScope) {
     const remaining = (seenMessages[scope] ?? []).filter((hash) => !removedHashes.has(hash));
     if (remaining.length > 0) {
@@ -137,19 +137,16 @@ export async function rewindSessionBackfillIngestionState(params: {
       delete seenMessages[scope];
     }
   }
-  const files = { ...state.files };
+  const files = state.files;
   // Rollback intentionally reopens only the journaled backfill range. Every
   // non-backfill hash stays tracked, so later live-ingestion work remains skipped.
   for (const [stateKey, lastContentLine] of rewindLineByStateKey) {
     const current = files[stateKey];
     if (current) {
-      files[stateKey] = {
-        ...current,
-        lastContentLine: Math.min(current.lastContentLine, lastContentLine),
-      };
+      current.lastContentLine = Math.min(current.lastContentLine, lastContentLine);
     }
   }
-  await writeSessionIngestionState(params.workspaceDir, { ...state, files, seenMessages });
+  await writeSessionIngestionState(params.workspaceDir, state);
   await deleteSessionBackfillRewindBatches(params.workspaceDir, batchEntries);
   return { completeCoverage, rewoundCandidates: candidates.length };
 }
@@ -190,15 +187,15 @@ export async function resetSessionBackfillIngestionState(params: {
   agentId: string;
 }): Promise<void> {
   const state = await readSessionIngestionState(params.workspaceDir);
-  await writeSessionIngestionState(params.workspaceDir, {
-    ...state,
-    files: Object.fromEntries(
-      Object.entries(state.files).filter(([key]) => !key.startsWith(`${params.agentId}:`)),
-    ),
-    seenMessages: Object.fromEntries(
-      Object.entries(state.seenMessages).filter(
-        ([key]) => !belongsToAgentSeenState(key, params.agentId),
-      ),
-    ),
-  });
+  for (const key of Object.keys(state.files)) {
+    if (key.startsWith(`${params.agentId}:`)) {
+      delete state.files[key];
+    }
+  }
+  for (const key of Object.keys(state.seenMessages)) {
+    if (belongsToAgentSeenState(key, params.agentId)) {
+      delete state.seenMessages[key];
+    }
+  }
+  await writeSessionIngestionState(params.workspaceDir, state);
 }

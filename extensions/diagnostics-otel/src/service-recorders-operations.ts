@@ -325,13 +325,12 @@ export function createOperationsRecorders(runtime: DiagnosticsRecorderRuntime) {
       const trackedSpan = trustedTrace?.spanId
         ? runtime.activeTrustedSpans.get(trustedTrace.spanId)
         : undefined;
-      const span =
-        trackedSpan ??
-        runtime.spanWithDuration("openclaw.run", spanAttrs, evt.durationMs, {
-          parentContext: runtime.activeTrustedParentContext(evt, metadata),
-          endTimeMs: evt.ts,
-        });
-      runtime.setSpanAttrs(span, spanAttrs);
+      const span = trackedSpan
+        ? runtime.setSpanAttrs(trackedSpan, spanAttrs)
+        : runtime.spanWithDuration("openclaw.run", spanAttrs, evt.durationMs, {
+            parentContext: runtime.activeTrustedParentContext(evt, metadata),
+            endTimeMs: evt.ts,
+          });
       if (evt.outcome === "error") {
         const message =
           redactedError ?? (evt.errorCategory ? redactSensitiveText(evt.errorCategory) : undefined);

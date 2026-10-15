@@ -36,7 +36,7 @@ export function resolveQaRunProfileMembership(
     profile: string;
     surface?: string;
     category?: string;
-    scenarioIds?: readonly string[];
+    scenarioIds?: readonly string[] | null;
   },
   source?: {
     scenarios?: QaSeedScenarioWithSource[];

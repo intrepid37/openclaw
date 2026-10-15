@@ -118,6 +118,7 @@ function recallEventResult(result: MemorySearchResult) {
   };
 }
 
+/** Returns the signed change in retained short-term entries. */
 export async function recordShortTermRecalls(params: {
   workspaceDir?: string;
   query: string;
@@ -135,21 +136,21 @@ export async function recordShortTermRecalls(params: {
   dayBucket?: string;
   nowMs?: number;
   timezone?: string;
-}): Promise<void> {
+}): Promise<number> {
   const workspaceDir = params.workspaceDir?.trim();
   if (!workspaceDir) {
-    return;
+    return 0;
   }
   const query = params.query.trim();
   if (!query) {
-    return;
+    return 0;
   }
   const signalType = params.signalType ?? "recall";
   const memoryResults = params.results.filter((result) => result.source === "memory");
   const relevant = memoryResults.filter((result) => isShortTermMemoryPath(result.path));
   const skipped = memoryResults.filter((result) => !isShortTermMemoryPath(result.path));
   if (relevant.length === 0 && (skipped.length === 0 || signalType === "grounded")) {
-    return;
+    return 0;
   }
 
   const nowMs = resolveMemoryCoreNowMs(params.nowMs);
@@ -169,7 +170,7 @@ export async function recordShortTermRecalls(params: {
     });
   if (relevant.length === 0) {
     await appendSkippedEvent(0);
-    return;
+    return 0;
   }
   const sourceSessions = new Map<string, Set<string>>();
   for (const { sessionOrigin } of relevant) {
@@ -180,8 +181,11 @@ export async function recordShortTermRecalls(params: {
     }
   }
   const todayBucket = formatMemoryDreamingDay(nowMs, params.timezone);
-  await withMemoryWorkspaceLock(workspaceDir, async () => {
+  return await withMemoryWorkspaceLock(workspaceDir, async () => {
     const store = await readStore(workspaceDir, nowIso);
+    const before = Object.values(store.entries).filter((entry) =>
+      isShortTermMemoryPath(entry.path),
+    ).length;
     const forgottenByAgent = new Map<string, Set<string>>();
     for (const [agentId, sessionIds] of sourceSessions) {
       forgottenByAgent.set(
@@ -197,7 +201,7 @@ export async function recordShortTermRecalls(params: {
         !forgottenByAgent.get(sessionOrigin.agentId)?.has(sessionOrigin.sessionId),
     );
     if (admitted.length === 0) {
-      return;
+      return 0;
     }
     const origins: MemoryEntryOrigin[] = [];
     for (const result of admitted) {
@@ -346,8 +350,11 @@ export async function recordShortTermRecalls(params: {
     }
     store.updatedAt = nowIso;
     await writeStore(workspaceDir, store);
+    const delta =
+      Object.values(store.entries).filter((entry) => isShortTermMemoryPath(entry.path)).length -
+      before;
     if (signalType === "grounded") {
-      return;
+      return delta;
     }
     await appendMemoryHostEvent(workspaceDir, {
       type: "memory.recall.recorded",
@@ -359,6 +366,7 @@ export async function recordShortTermRecalls(params: {
     if (skipped.length > 0) {
       await appendSkippedEvent(admitted.length);
     }
+    return delta;
   });
 }
 

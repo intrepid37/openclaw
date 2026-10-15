@@ -34,7 +34,7 @@ function readCount(row: unknown): number {
   return typeof count === "bigint" || typeof count === "number" ? Number(count) : 0;
 }
 
-export function isVectorKnnRow(value: unknown): value is VectorKnnRow {
+function isVectorKnnRow(value: unknown): value is VectorKnnRow {
   if (!value || typeof value !== "object") {
     return false;
   }
