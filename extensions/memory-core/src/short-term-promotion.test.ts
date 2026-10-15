@@ -287,7 +287,7 @@ describe("short-term promotion", () => {
     return await rankAllCandidates(workspaceDir);
   }
 
-  function recordRotateCredentialsRecall(workspaceDir: string): Promise<void> {
+  function recordRotateCredentialsRecall(workspaceDir: string) {
     return recordMemoryRecalls(
       workspaceDir,
       "rotate creds",

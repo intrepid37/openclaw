@@ -28,7 +28,7 @@ describe("talk event summaries", () => {
         payload: { message: "provider failed", detail: "not included" },
       },
     ] satisfies TalkEventInput[];
-    const events = inputs.map((event) => talk.emit(event));
+    const events = inputs.map((event) => talk.emit<typeof event.payload>(event));
 
     expect(summarizeRecentTalkEvents(events)).toEqual([
       ...Array.from({ length: 8 }, () => ({ type: "session.started" })),

@@ -7,7 +7,7 @@ type RecordShortTermRecallsFn =
   typeof import("./short-term-promotion-record.js").recordShortTermRecalls;
 
 const recallTrackingMock = vi.hoisted(() => ({
-  recordShortTermRecalls: vi.fn<RecordShortTermRecallsFn>(async () => {}),
+  recordShortTermRecalls: vi.fn<RecordShortTermRecallsFn>(async () => 0),
   moduleLoads: 0,
   onLoad: vi.fn<() => void>(),
 }));
@@ -41,7 +41,7 @@ describe("memory_search recall tracking", () => {
     clearMemoryPluginState();
     resetMemoryToolMockState({ searchImpl: async () => [recallHit] });
     recallTrackingMock.recordShortTermRecalls.mockReset();
-    recallTrackingMock.recordShortTermRecalls.mockResolvedValue(undefined);
+    recallTrackingMock.recordShortTermRecalls.mockResolvedValue(0);
   });
 
   it("does not load recall tracking when dreaming is disabled", async () => {
@@ -78,8 +78,8 @@ describe("memory_search recall tracking", () => {
     let resolveRecall: (() => void) | undefined;
     recallTrackingMock.recordShortTermRecalls.mockImplementationOnce(
       async () =>
-        await new Promise<void>((resolve) => {
-          resolveRecall = resolve;
+        await new Promise<number>((resolve) => {
+          resolveRecall = () => resolve(0);
         }),
     );
 

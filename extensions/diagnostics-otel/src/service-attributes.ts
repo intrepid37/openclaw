@@ -160,10 +160,8 @@ export function securitySeverityText(
       return "ERROR";
     case "medium":
       return "WARN";
-    case "info":
-    case "low":
-      return "INFO";
   }
+  return "INFO";
 }
 
 export function assignOtelSecurityAttributes(

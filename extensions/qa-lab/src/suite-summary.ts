@@ -288,7 +288,7 @@ function prepareQaSuiteSummary(
   requireExecutedScenario = false,
 ) {
   if (!isRecord(summary)) {
-    return;
+    return undefined;
   }
   const inspection = inspectQaSuiteSummaryAccounting(summary);
   if (typeof inspection === "string") {

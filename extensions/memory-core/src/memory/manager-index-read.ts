@@ -37,12 +37,11 @@ export function readMemoryIndex(db: DatabaseSync, command: MemoryIndexReadComman
       };
     case "cache.read":
       return { type: command.type, value: loadMemoryEmbeddingCache({ ...command.input, db }) };
-    case "session.current":
-      return {
-        type: command.type,
-        value: hasMemorySessionTombstone(db, command.input.agentId, command.input.sessionId)
-          ? ("forgotten" as const)
-          : ("current" as const),
-      };
   }
+  return {
+    type: command.type,
+    value: hasMemorySessionTombstone(db, command.input.agentId, command.input.sessionId)
+      ? ("forgotten" as const)
+      : ("current" as const),
+  };
 }

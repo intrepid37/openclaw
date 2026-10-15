@@ -58,11 +58,9 @@ export async function readApiResponse(
     throw error;
   } finally {
     clearTimeout(timeout);
-    try {
-      await release?.();
-    } catch {
+    await release?.().catch(() => {
       throw new ApiResponseReadError("release");
-    }
+    });
   }
 }
 

@@ -267,7 +267,7 @@ describe("Browser dashboard operation ordering", () => {
         });
         const retained = await getBrowserSessionTabStore().entries();
         finish.resolve();
-        if (changed === "runtime" && phase !== "board") {
+        if (changed === "runtime") {
           await expect(cleanup).rejects.toThrow("Browser session tab store owner changed");
         } else {
           await expect(cleanup).resolves.toBe(0);
