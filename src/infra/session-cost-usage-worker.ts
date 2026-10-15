@@ -547,6 +547,8 @@ export async function executeUsageCostWorker(
   let completedFiles = 0;
   let changed = pruned;
   let pending: UsageCostWorkerHostEffects["write"]["input"] = [];
+  let pendingRollups: Array<Parameters<ReturnType<typeof usageRefreshInputs>["retainRollup"]>[1]> =
+    [];
   let pendingTransfers: ArrayBuffer[] = [];
   let pendingBytes = 0;
   let flushAt = performance.now() + 1_000;
@@ -558,7 +560,12 @@ export async function executeUsageCostWorker(
     if (!written) {
       throw new Error("Usage rollup batch was not committed");
     }
+    const receipt = refreshInputs?.rollupReceipt();
+    for (const rollup of pendingRollups) {
+      refreshInputs?.retainRollup(receipt, rollup);
+    }
     pending = [];
+    pendingRollups = [];
     pendingTransfers = [];
     pendingBytes = 0;
     flushAt = performance.now() + 1_000;
@@ -629,13 +636,15 @@ export async function executeUsageCostWorker(
     const dates = new Set(partitions.map((partition) => partition.date));
     const removedDates = envelope?.projection?.dates.filter((date) => !dates.has(date)) ?? [];
     const value = new TextEncoder().encode(valueJson);
-    pendingBytes +=
-      value.byteLength +
+    const retainedBytes =
+      2 * valueJson.length +
       blob.byteLength +
-      changedPartitions.reduce(
+      partitions.reduce(
         (bytes, partition) => bytes + 2 * partition.valueJson.length + partition.blob.byteLength,
         0,
       );
+    const body = retainedBytes <= 8 * 1024 * 1024 ? { blob, partitions } : undefined;
+    pendingBytes += value.byteLength + retainedBytes;
     pending.push({
       key: file.filePath,
       value,
@@ -645,13 +654,21 @@ export async function executeUsageCostWorker(
       removedDates,
       replacePartitions,
     });
-    pendingTransfers.push(
-      value.buffer,
-      blob.buffer,
-      ...changedPartitions.map((partition) => partition.blob.buffer),
-    );
+    pendingRollups.push({
+      row: { key: file.filePath, valueJson, updatedAt: entry.scannedAt },
+      body,
+    });
+    pendingTransfers.push(value.buffer);
+    // Retained bodies stay in this worker; channel cloning copies only the
+    // changed partitions sent to the host. Oversized bodies transfer ownership.
+    if (!body) {
+      pendingTransfers.push(
+        blob.buffer,
+        ...changedPartitions.map((partition) => partition.blob.buffer),
+      );
+    }
     // Bound retained bytes and writer occupancy; a single transcript may exceed
-    // the byte/time limit. Transfer buffers once instead of copying each body.
+    // the byte/time limit.
     if (pending.length === 50 || pendingBytes >= 1024 * 1024 || performance.now() >= flushAt) {
       await flush();
     }
