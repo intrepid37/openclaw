@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("node:fs", async () => {
   const { mockNodeBuiltinModule } = await import("openclaw/plugin-sdk/test-node-mocks");
   return mockNodeBuiltinModule(() => vi.importActual<typeof import("node:fs")>("node:fs"), {
-    existsSync: (candidate: string) => mocks.existingPaths.has(candidate),
+    existsSync: (candidate) => typeof candidate === "string" && mocks.existingPaths.has(candidate),
   });
 });
 

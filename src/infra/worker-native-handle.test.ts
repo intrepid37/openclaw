@@ -14,8 +14,8 @@ it.each(["execution", "resource"] as const)(
     let failResource: ((error: Error) => void) | undefined;
     const release = vi.fn();
     resource.bind.mockImplementation((options: Parameters<typeof bindNativeWorkerResource>[0]) => {
-      closeResource = options.closed;
-      failResource = options.failed;
+      closeResource = () => options.closed();
+      failResource = (error) => options.failed(error);
       return {
         attachment: {
           endpoint: "synthetic-endpoint",
@@ -32,10 +32,11 @@ it.each(["execution", "resource"] as const)(
         closeAfterSupervisor: vi.fn(),
       };
     });
+    const post = vi.fn();
     const runtime: NativeWorkerRuntime = {
       handles: new Map(),
       service: vi.fn(),
-      post: vi.fn(),
+      post,
       refreshReference: vi.fn(),
       resourceBroker: vi.fn(),
     };
@@ -68,7 +69,7 @@ it.each(["execution", "resource"] as const)(
     expect(exited).toHaveBeenCalledOnce();
     expect(exited).toHaveBeenCalledWith(7);
     expect(release).toHaveBeenCalledOnce();
-    expect(runtime.post).toHaveBeenCalledWith({ type: "release", id: 1 });
+    expect(post).toHaveBeenCalledWith({ type: "release", id: 1 });
     worker.receive({ type: "stopped", id: 1, code: 0 });
     expect(exited).toHaveBeenCalledOnce();
   },

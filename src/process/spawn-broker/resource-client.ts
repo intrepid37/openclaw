@@ -158,7 +158,7 @@ export function attachBrokerNativeResource(
         );
   start();
   const assertCleanupAvailable = () => {
-    if (transportLost) {
+    if (transportLost && failure) {
       throw failure;
     }
   };
