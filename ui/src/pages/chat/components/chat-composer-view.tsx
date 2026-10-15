@@ -53,7 +53,7 @@ export function renderChatComposerView(context: ChatComposerViewContext) {
   const props = untrack(() => context.props);
 
   const activeSession = createMemo(() => props.selectedSession);
-  const composerControls = createMemo(() => props.composerControls ?? undefined);
+  const composerControls = createMemo(() => props.composerControls);
   const composerLeadControl = (
     <Show when={props.permissionPicker}>{(picker) => <ChatPermissionPicker {...picker()} />}</Show>
   );
@@ -226,7 +226,7 @@ export function renderChatComposerView(context: ChatComposerViewContext) {
             controller={context.goalComposer}
             requestUpdate={context.requestUpdate}
           />
-          <LitContent value={props.composerRecovery ?? undefined} />
+          <LitContent value={props.composerRecovery} />
         </div>
         {showComposerInput() ? (
           <ComposerInputScope state={context.state}>

@@ -12,7 +12,10 @@ import { normalizeMessage } from "../../../lib/chat/message-normalizer.ts";
 import { renderSolidRef } from "../../../test-helpers/render-solid-ref.ts";
 import { persistedMessageEntryId } from "../chat-thread-items.ts";
 import { renderGroupedMessage } from "./chat-message-bubble.ts";
-import { prepareChatMessageRender, resolveMessageActionDetails } from "./chat-message-markdown.ts";
+import {
+  prepareChatMessageRender,
+  resolveMessageActionDetails,
+} from "./chat-message-markdown-view.tsx";
 import { renderMessageMarkdown } from "./chat-message-text.ts";
 
 const cappedMeta = { id: "msg-1", truncated: true, reason: "display-cap" };

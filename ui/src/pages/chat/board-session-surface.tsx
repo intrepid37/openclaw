@@ -29,7 +29,7 @@ export async function ensureBoardViewElement(): Promise<boolean> {
   if (customElements.get("openclaw-board-view")) {
     return false;
   }
-  boardViewLoad ??= import("../../components/board/board-view.ts");
+  boardViewLoad ??= import("../../components/board/board-view.tsx");
   await boardViewLoad;
   return true;
 }

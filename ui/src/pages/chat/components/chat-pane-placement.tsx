@@ -7,7 +7,7 @@ import {
   repositorySessionNeedsWorker,
   sessionPlacementRetry,
 } from "../../../components/session-placement-action.ts";
-import { isCloudWorkerPlacementState } from "../../../components/session-row-badges.ts";
+import { isCloudWorkerPlacementState } from "../../../components/session-row-badge-presentation.ts";
 import { Icon } from "../../../components/solid/icon.tsx";
 import { formatBytes } from "../../../lib/agents/display.ts";
 import { formatRelativeTimestamp } from "../../../lib/format.ts";

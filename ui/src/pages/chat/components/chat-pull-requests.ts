@@ -6,8 +6,8 @@ import type {
   ControlUiSessionPullRequest,
   ControlUiSessionPullRequestSnapshot,
 } from "../../../../../src/gateway/control-ui-contract.js";
-import "./chat-ci-details.ts";
-import "./chat-ci-automation-control.ts";
+import "./chat-ci-details.tsx";
+import "./chat-ci-automation-control.tsx";
 import type { ApplicationGateway } from "../../../app/gateway.ts";
 import { formatGitHubItemReference } from "../../../components/github-link-target.ts";
 import { icons } from "../../../components/icons.ts";
@@ -365,10 +365,10 @@ export function renderChatPullRequests(props: {
               `${pullRequest.owner}/${pullRequest.repo}`,
               pullRequest.branch,
               t(STATE_LABEL_KEYS[pullRequest.state]),
-              typeof pullRequest.additions === "number"
+              pullRequest.additions !== undefined
                 ? `+${pullRequest.additions.toLocaleString()}`
                 : null,
-              typeof pullRequest.deletions === "number"
+              pullRequest.deletions !== undefined
                 ? `−${pullRequest.deletions.toLocaleString()}`
                 : null,
             ]

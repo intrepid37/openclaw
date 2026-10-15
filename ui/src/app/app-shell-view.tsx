@@ -8,7 +8,7 @@ import {
   renderContextNewSessionAction,
   renderNewSessionLink,
 } from "../components/new-session-link.ts";
-import type { ThemeModeChangeDetail } from "../components/theme-mode-toggle.ts";
+import type { ThemeModeChangeDetail } from "../components/theme-mode-toggle.tsx";
 import {
   formatKeyboardShortcutCombo,
   KEYBOARD_SHORTCUT_COMBOS,

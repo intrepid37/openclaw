@@ -350,7 +350,7 @@ export function sidebarPanelDefinitions(
             .client=${state.connected ? state.client : null}
             .available=${state.connected}
             .readers=${params?.linkReaders ?? EMPTY_LINK_READERS}
-            .agentId=${params?.agentId ?? undefined}
+            .agentId=${params?.agentId}
             .sessionKey=${state.sessionKey}
             .presented=${livePresentation(params?.linkReaderPresented ?? false)}
             .tabsInHeader=${params?.linkReaderTabsInHeader ?? true}
@@ -402,7 +402,7 @@ export function sidebarPanelDefinitions(
         ? renderPluginContribution(
             "panels",
             entry.key,
-            { sessionKey: state?.sessionKey ?? "", agentId: params?.agentId ?? undefined },
+            { sessionKey: state?.sessionKey ?? "", agentId: params?.agentId },
             params?.isPluginPanelPresented(slot),
           )
         : null,
