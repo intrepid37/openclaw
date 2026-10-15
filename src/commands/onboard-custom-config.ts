@@ -122,6 +122,8 @@ type ApplyCustomApiConfigParams = {
   providerId?: string;
   alias?: string;
   supportsImageInput?: boolean;
+  /** Keep authored catalog fields when importing discovered model IDs. */
+  preserveExistingModelMetadata?: boolean;
   target?: OnboardingAgentTarget;
   setAsPrimary?: boolean;
   manifestPlugins?: readonly CustomAliasManifestPlugin[];
@@ -547,7 +549,7 @@ export function applyCustomApiConfig(params: ApplyCustomApiConfigParams) {
         model.id === modelId
           ? {
               ...model,
-              ...(isAzure ? nextModel : {}),
+              ...(isAzure && !params.preserveExistingModelMetadata ? nextModel : {}),
               // Preserve caller-authored catalog fields unless setup explicitly
               // received a new input-mode choice for this existing model.
               ...(explicitInput ? { input: explicitInput } : {}),

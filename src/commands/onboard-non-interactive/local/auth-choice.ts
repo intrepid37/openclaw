@@ -221,6 +221,7 @@ export async function applyNonInteractiveAuthChoice(params: {
         config: nextConfig,
         ...customAuth,
         modelId: firstToApply,
+        preserveExistingModelMetadata: !customAuth.modelId,
         apiKey: customApiKeyInput,
         target: params.target,
       });
@@ -229,6 +230,7 @@ export async function applyNonInteractiveAuthChoice(params: {
           ...customAuth,
           config: result.config,
           modelId,
+          preserveExistingModelMetadata: !customAuth.modelId,
           apiKey: customApiKeyInput,
           providerId: result.providerId,
           target: params.target,

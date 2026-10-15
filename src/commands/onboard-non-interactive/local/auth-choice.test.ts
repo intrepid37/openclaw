@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OpenClawConfig } from "../../../config/config.js";
 import { resolveAgentModelPrimaryValue } from "../../../config/model-input.js";
+import type { ModelDefinitionConfig } from "../../../config/types.models.js";
 import * as fetchGuard from "../../../infra/net/fetch-guard.js";
 import { ExitError } from "../../../runtime.js";
 import * as apiProviderAuthChoices from "../../auth-choice.apply.api-providers.js";
@@ -63,6 +64,31 @@ beforeEach(() => {
 afterEach(() => {
   vi.restoreAllMocks();
 });
+
+const azureBaseUrl = "https://fixture.openai.azure.com/openai/v1";
+
+function createAzureCatalogConfig() {
+  const model: ModelDefinitionConfig = {
+    id: "chat-prod",
+    name: "Production chat",
+    contextWindow: 65_536,
+    maxTokens: 8192,
+    input: ["text", "image"],
+    reasoning: true,
+    compat: { supportsStore: true, supportsDeveloperRole: false },
+    cost: { input: 1, output: 2, cacheRead: 3, cacheWrite: 4 },
+  };
+  const apiKey = { source: "env", provider: "default", id: "AZURE_DISCOVERY_TEST_KEY" } as const;
+  const config: OpenClawConfig = {
+    models: {
+      providers: {
+        local: { baseUrl: azureBaseUrl, api: "azure-openai-responses", apiKey, models: [model] },
+      },
+    },
+    gateway: { port: 19_991, bind: "loopback" },
+  };
+  return { config, model };
+}
 
 function createRuntime() {
   return {
@@ -260,6 +286,72 @@ describe("applyNonInteractiveAuthChoice", () => {
       );
     },
   );
+
+  it.each([
+    { name: "first advertised", modelIds: ["chat-prod", "new-chat"], customImageInput: undefined },
+    { name: "last advertised", modelIds: ["new-chat", "chat-prod"], customImageInput: undefined },
+    {
+      name: "explicit text-only override",
+      modelIds: ["chat-prod", "new-chat"],
+      customImageInput: false,
+    },
+  ])(
+    "preserves authored Azure discovery metadata ($name)",
+    async ({ modelIds, customImageInput }) => {
+      vi.spyOn(fetchGuard, "fetchWithSsrFGuard").mockResolvedValue({
+        response: Response.json({ data: modelIds.map((id) => ({ id })) }),
+        finalUrl: `${azureBaseUrl}/models`,
+        release: async () => {},
+      });
+      const { config, model } = createAzureCatalogConfig();
+      const result = await applyChoice({
+        nextConfig: config,
+        opts: { customBaseUrl: azureBaseUrl, customProviderId: "local", customImageInput },
+      });
+      expect(result?.models?.providers?.local?.models).toEqual([
+        { ...model, ...(customImageInput === false ? { input: ["text"] } : {}) },
+        {
+          id: "new-chat",
+          name: "new-chat (Custom Provider)",
+          contextWindow: 400_000,
+          maxTokens: 16_384,
+          input: ["text"],
+          reasoning: false,
+          compat: { supportsStore: false },
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        },
+      ]);
+      expect(result?.models?.providers?.local?.apiKey).toEqual(
+        config.models?.providers?.local?.apiKey,
+      );
+      expect(result?.models?.providers?.local?.headers).toEqual({
+        "api-key": config.models?.providers?.local?.apiKey,
+      });
+      expect(result?.gateway).toEqual(config.gateway);
+      expect(result?.agents?.defaults?.models).toMatchObject({
+        "local/chat-prod": {},
+        "local/new-chat": {},
+      });
+      expect(resolveAgentModelPrimaryValue(result?.agents?.defaults?.model)).toBe(
+        `local/${modelIds[0]}`,
+      );
+    },
+  );
+
+  it("keeps explicit Azure setup normalization", async () => {
+    const request = vi
+      .spyOn(fetchGuard, "fetchWithSsrFGuard")
+      .mockRejectedValue(new Error("Unexpected discovery request"));
+    const { config, model } = createAzureCatalogConfig();
+    const result = await applyChoice({
+      nextConfig: config,
+      opts: { customBaseUrl: azureBaseUrl, customProviderId: "local", customModelId: "chat-prod" },
+    });
+    expect(result?.models?.providers?.local?.models).toEqual([
+      { ...model, input: ["text"], reasoning: false, compat: { supportsStore: false } },
+    ]);
+    expect(request).not.toHaveBeenCalled();
+  });
 
   it.each([
     Response.json({ data: [] }),
