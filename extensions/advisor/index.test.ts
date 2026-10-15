@@ -855,6 +855,21 @@ describe("advisor", () => {
     },
   );
 
+  it("does not queue a correction already accepted under the same key", async () => {
+    const run = setup({ everyToolCalls: 1, everyMinutes: 0 });
+    run.steer.mockResolvedValue({ steered: false, reason: "duplicate" });
+    run.forkSession
+      .mockResolvedValueOnce({ text: "CORRECTION\nRead the answer file." })
+      .mockResolvedValueOnce({ text: "APPROVE\nRead the answer file." });
+    await run.startService();
+    await run.startRun();
+    await run.toolCompleted();
+    await run.wakeScheduler();
+    expect(run.steer).toHaveBeenCalledOnce();
+    expect(run.enqueue).not.toHaveBeenCalled();
+    await run.stopService();
+  });
+
   it.each(["end", "error"])("cancels an in-flight review on an aborted %s", async (phase) => {
     const run = setup({ everyToolCalls: 1, everyMinutes: 0 });
     await run.startService();

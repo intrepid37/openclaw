@@ -119,6 +119,10 @@ export default definePluginEntry({
           api.logger.info(`advisor: steered active run for session ${sessionKey}`);
           return;
         }
+        if (result.reason === "duplicate") {
+          api.logger.info(`advisor: correction already accepted for session ${sessionKey}`);
+          return;
+        }
         if (signal.aborted || !scheduler || scheduler.signal.aborted) {
           return;
         }
