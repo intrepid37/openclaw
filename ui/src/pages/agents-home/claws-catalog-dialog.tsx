@@ -23,11 +23,11 @@ import {
 import { defineSolidBridge } from "../../lit/solid-bridge.ts";
 import { preparePaneSessionHandoff } from "../chat/chat-pane-shared.ts";
 import {
-  applyOfficialClawAdd,
-  readOfficialClawAddReviewPlan,
-  readOfficialClawDetail,
-  readOfficialClawPreview,
-  searchOfficialClaws,
+  applyClawAdd,
+  readClawAddReviewPlan,
+  readClawDetail,
+  readClawPreview,
+  searchClaws,
   type ClawCatalogDetail,
   type ClawCatalogEntry,
   type ClawCatalogSource,
@@ -199,7 +199,7 @@ class ClawsCatalogModel {
     this.loading = true;
     this.error = null;
     try {
-      const entries = await searchOfficialClaws(
+      const entries = await searchClaws(
         scope.client,
         this.initialPackageName || this.query,
         this.initialPackageName ? 100 : undefined,
@@ -267,7 +267,7 @@ class ClawsCatalogModel {
     this.addError = null;
     this.detailLoading = true;
     try {
-      const detail = await readOfficialClawDetail(scope.client, {
+      const detail = await readClawDetail(scope.client, {
         packageName: selected.packageName,
         version: selected.latestVersion,
       });
@@ -450,7 +450,7 @@ class ClawsCatalogModel {
     try {
       let result;
       try {
-        result = await applyOfficialClawAdd(scope.client, source, {
+        result = await applyClawAdd(scope.client, source, {
           acknowledgeClawHubRisk: this.riskAcknowledged,
           ...(reviewPlan ? { reviewPlan } : {}),
         });
@@ -465,7 +465,7 @@ class ClawsCatalogModel {
         if (reviewPlan || !readClawReviewRequiredError(error)) {
           throw error;
         }
-        const plan = await readOfficialClawAddReviewPlan(scope.client, source);
+        const plan = await readClawAddReviewPlan(scope.client, source);
         if (
           !plan.pluginReviews.some((item) => item.ownerAction === "install") &&
           plan.skillReviews.length === 0
@@ -535,7 +535,7 @@ class ClawsCatalogModel {
       return;
     }
     try {
-      const result = await readOfficialClawPreview(scope.client, source, { kind, name });
+      const result = await readClawPreview(scope.client, source, { kind, name });
       if (this.gateway.isCurrent(scope) && revision === this.previewRevision && this.preview) {
         this.preview = { ...this.preview, content: result.content, loading: false };
       }
