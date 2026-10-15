@@ -253,7 +253,7 @@ it.skipIf(process.platform === "win32").for(["managed", "SIGTERM", "SIGKILL"] as
         update: { checkOnStart: false },
         browser: { enabled: false },
         discovery: { mdns: { mode: "off" } },
-        plugins: { slots: { memory: "none" } },
+        plugins: { enabled: false },
         models: {
           mode: "replace",
           providers: {
