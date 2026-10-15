@@ -151,3 +151,31 @@ it("retains focused Layout controls and an open menu when header props refresh",
   expect(focusAtSplit).toEqual([trigger]);
   expect(onSplitRight).toHaveBeenCalledExactlyOnceWith("pane-1");
 });
+
+it("keeps a native external panel link when it is the only Layout action", async () => {
+  // jsdom has no layout; this fixture's only native control is visible.
+  Object.defineProperty(HTMLElement.prototype, "checkVisibility", {
+    configurable: true,
+    value: () => true,
+  });
+  onTestFinished(() => {
+    Reflect.deleteProperty(HTMLElement.prototype, "checkVisibility");
+  });
+  const panelDefinitions = sidebarPanelDefinitions().map((definition) =>
+    definition.slot === "conversation"
+      ? { ...definition, headerLink: { href: "https://example.test/panel", label: "Open panel" } }
+      : definition,
+  );
+  const mounted = mountChatPaneHeader([], { sidebarLayout: { columns: [] }, panelDefinitions });
+  onTestFinished(mounted.unmount);
+  const trigger = mounted.container.querySelector<HTMLButtonElement>(".chat-pane__layout-trigger")!;
+  trigger.click();
+  await waitForSolid(() =>
+    expect(mounted.container.querySelector('a[aria-label="Open panel"]')).not.toBeNull(),
+  );
+  const link = mounted.container.querySelector<HTMLAnchorElement>('a[aria-label="Open panel"]')!;
+  expect(link.href).toBe("https://example.test/panel");
+  expect(link.target).toBe("_blank");
+  expect(link.rel).toBe("noopener");
+  expect(link.closest(".oc-menu")?.matches(":popover-open")).toBe(true);
+});
