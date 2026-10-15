@@ -310,9 +310,8 @@ export function renderChatPaneComposerControls(params: {
               : Promise.resolve(false),
           onModelPickerOpen: () => refreshChatModelCatalogOnDemand(state),
           onModelPickerOpenChange: (open) => {
+            // The native picker already presents this transition.
             state.chatModelPickerOpenSessionKey = open ? state.sessionKey : null;
-            // Closing also needs a render; catalog refresh only invalidates on open.
-            state.requestUpdate?.();
           },
           onModelSelect: (next, targetSessionKey, agentRuntime) =>
             modelAccess.allowed && canPatch({ model: next, agentRuntime }, targetSessionKey)

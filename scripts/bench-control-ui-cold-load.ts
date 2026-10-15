@@ -156,8 +156,6 @@ function summarizeSidebarWindows(
 const { values } = parseArgs({
   options: {
     "live-events": { type: "boolean", default: false },
-    "first-open": { type: "boolean", default: false },
-    "init-script": { type: "string", multiple: true },
     "sidebar-list-churn": { type: "boolean", default: false },
     "sidebar-row-transfer": { type: "string", default: "full" },
     "bundle-dir": { type: "string" },
@@ -271,9 +269,6 @@ try {
         mutation: Parameters<ReturnType<typeof createTeamScaleSidebarListOwner>["apply"]>[0],
       ) => sidebarLists!.apply(mutation),
     );
-  }
-  for (const script of values["init-script"] ?? []) {
-    await page.addInitScript({ path: script });
   }
   const errors: string[] = [];
   const harnessWarnings: string[] = [];
@@ -642,88 +637,6 @@ try {
         );
       }
     }
-    let firstOpen;
-    if (values["first-open"]) {
-      await page.setViewportSize({ width: 1100, height: 1179 });
-      const samples = [];
-      for (const target of ["model", "details"] as const) {
-        await page.goto(url);
-        await settle();
-        const trigger = page
-          .locator(target === "model" ? "[data-chat-model-select]" : ".chat-details-toggle")
-          .first();
-        const box = await trigger.boundingBox();
-        if (!box) throw new Error(`Missing ${target} trigger`);
-        await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-        await page.evaluate((target) => {
-          const selector = target === "model" ? "[data-chat-model-select]" : ".chat-details-toggle";
-          const trigger = document.querySelector<HTMLElement>(selector)!;
-          Reflect.set(
-            window,
-            "__firstOpenResult",
-            new Promise((resolve, reject) => {
-              trigger.addEventListener(
-                "pointerdown",
-                () => {
-                  const start = performance.now();
-                  performance.mark(`first-open:${target}:pointerdown`);
-                  let probeMs = 0;
-                  let frames = 0;
-                  const inspect = () => {
-                    frames++;
-                    const probeStart = performance.now();
-                    const candidate =
-                      target === "model"
-                        ? document.querySelector<HTMLElement>(
-                            "[data-chat-model-option]:not([hidden])",
-                          )
-                        : document.querySelector<HTMLElement>(".chat-details");
-                    const ready = candidate?.checkVisibility() === true;
-                    probeMs += performance.now() - probeStart;
-                    if (!ready) {
-                      if (frames > 120) {
-                        reject(new Error(`First open did not become visible: ${target}`));
-                        return;
-                      }
-                      requestAnimationFrame(inspect);
-                      return;
-                    }
-                    const readyMs = performance.now() - start;
-                    // A posted task after rAF includes the browser's following rendering opportunity.
-                    // This is a paint upper bound, not a compositor presentation timestamp.
-                    const channel = new MessageChannel();
-                    channel.port1.onmessage = () => {
-                      channel.port1.close();
-                      channel.port2.close();
-                      performance.mark(`first-open:${target}:paint-opportunity`);
-                      resolve({
-                        target,
-                        readyMs,
-                        paintOpportunityMs: performance.now() - start,
-                        frames,
-                        probeMs,
-                        searchFocused:
-                          document.activeElement?.matches("[data-chat-model-search]") ?? false,
-                        options: document.querySelectorAll("[data-chat-model-option]").length,
-                      });
-                    };
-                    channel.port2.postMessage(null);
-                  };
-                  requestAnimationFrame(inspect);
-                },
-                { once: true },
-              );
-            }),
-          );
-        }, target);
-        await page.mouse.down();
-        await page.mouse.up();
-        samples.push(await page.evaluate(() => Reflect.get(window, "__firstOpenResult")));
-        await page.screenshot({ path: path.join(artifactDir, `run-${run + 1}.${target}.png`) });
-      }
-      firstOpen = samples;
-      await page.setViewportSize({ width: 1719, height: 1179 });
-    }
     await cdp.detach();
     const result = {
       run: run + 1,
@@ -735,7 +648,6 @@ try {
       mappedFrames: mapped.mappedFrames,
       unmappedFrames: mapped.unmappedFrames,
       harnessWarnings,
-      firstOpen,
       visual,
       live,
     };

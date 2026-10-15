@@ -36,7 +36,7 @@ import {
   toggleModelProviderGroup,
   updateModelSearch,
 } from "./chat-model-picker-search.ts";
-import { createChatPickerOverlay } from "./chat-picker-overlay.ts";
+import { closeComposerPicker, createChatPickerOverlay } from "./chat-picker-overlay.ts";
 
 registerEnglishCatalog(registerModelControlsEnglish);
 
@@ -79,7 +79,7 @@ function closeModelPickerAfterSelection(event: MouseEvent) {
   // SAFETY: Model option buttons are the only callers of this click handler.
   const details = (event.currentTarget as HTMLElement).closest<HTMLDetailsElement>("details");
   if (details) {
-    details.open = false;
+    closeComposerPicker(details);
     if (event.detail === 0) {
       details.querySelector<HTMLElement>("summary")?.focus({ preventScroll: true });
     }
@@ -143,6 +143,12 @@ function prepareChatModelPicker(params: ChatModelPickerParams) {
     }
     providerGroups.set(provider, group);
   }
+  // Unranked catalogs can contain hundreds of models; browse the rest through All models.
+  for (const [provider, group] of providerGroups) {
+    if (!recommendingProviders.has(provider)) {
+      group.more = group.lead.splice(9);
+    }
+  }
   const orderedProviderGroups = [...providerGroups];
   const leadingProvider = leadingModelOption && groupProvider(leadingModelOption);
   const activeProvider = activeModelOption && groupProvider(activeModelOption);
@@ -194,7 +200,23 @@ function ModelList(props: { label: string; more?: boolean; children: JSX.Element
 }
 
 export function ChatModelPicker(params: ChatModelPickerParams) {
-  const pickerOverlay = createChatPickerOverlay();
+  const pickerOverlay = createChatPickerOverlay((target) => {
+    params.onOpenChange?.(target.open);
+    if (!target.open) {
+      params.accountSection?.onClose();
+      resetModelSearch(target);
+      return;
+    }
+    void params.onOpen?.();
+    const active = target.ownerDocument.activeElement;
+    requestAnimationFrame(() => {
+      if (target.isConnected && target.open && target.ownerDocument.activeElement === active) {
+        target
+          .querySelector<HTMLInputElement>("[data-chat-model-search]")
+          ?.focus({ preventScroll: true });
+      }
+    });
+  });
   const state = createMemo(() => prepareChatModelPicker(params));
   let details: HTMLDetailsElement | undefined;
   createEffect(
@@ -382,26 +404,6 @@ export function ChatModelPicker(params: ChatModelPickerParams) {
       data-chat-autotype-shortcuts
       prop:open={params.open === true}
       onKeyDown={handleModelPickerKeydown}
-      onToggle={(event: Event) => {
-        // SAFETY: This toggle handler belongs to the surrounding native details.
-        const target = event.currentTarget as HTMLDetailsElement;
-        params.onOpenChange?.(target.open);
-        if (!target.open) {
-          params.accountSection?.onClose();
-          resetModelSearch(target);
-          return;
-        }
-        void params.onOpen?.();
-        syncChatModelSearch(target);
-        const active = target.ownerDocument.activeElement;
-        requestAnimationFrame(() => {
-          if (target.isConnected && target.open && target.ownerDocument.activeElement === active) {
-            target
-              .querySelector<HTMLInputElement>("[data-chat-model-search]")
-              ?.focus({ preventScroll: true });
-          }
-        });
-      }}
     >
       <summary
         class={[
@@ -419,14 +421,6 @@ export function ChatModelPicker(params: ChatModelPickerParams) {
         aria-busy={params.triggerLoading ? "true" : "false"}
         aria-disabled={params.disabled ? "true" : "false"}
         title={params.disabledReason?.trim() || undefined}
-        onClick={(event: MouseEvent) => {
-          if (params.disabled) {
-            event.preventDefault();
-            return;
-          }
-          // SAFETY: This click handler belongs to the surrounding native summary.
-          (event.currentTarget as HTMLElement).focus({ preventScroll: true });
-        }}
       >
         {state().modelToolsUnavailable ? (
           <openclaw-tooltip prop:content={t("chat.modelControls.chatOnlyHelp")}>
@@ -464,7 +458,17 @@ export function ChatModelPicker(params: ChatModelPickerParams) {
           <Icon name="chevronUp" />
         </span>
       </summary>
-      <div class="oc-overlay chat-picker-overlay" data-anchored-overlay popover="manual">
+      <div
+        class="oc-overlay chat-picker-overlay"
+        data-anchored-overlay
+        popover="manual"
+        onOverlay-show={() => {
+          const input = details?.querySelector<HTMLInputElement>("[data-chat-model-search]");
+          if (input) {
+            updateModelSearch(input, true);
+          }
+        }}
+      >
         <div
           class="chat-controls__inline-select-menu chat-controls__model-menu"
           aria-label={t("chat.selectors.model")}
