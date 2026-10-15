@@ -4,6 +4,7 @@ import { createEffect, createMemo, Show } from "solid-js";
 import { renderGatewayStatus } from "../components/gateway-status.ts";
 import { icons } from "../components/icons.ts";
 import { renderConnectingSplash } from "../components/loading-skeleton.ts";
+import { LazySettingsSidebar } from "../components/settings-sidebar-lazy.tsx";
 import {
   ContextNewSessionAction,
   renderNewSessionLink as NewSessionLink,
@@ -238,11 +239,13 @@ function ApplicationShell(props: { host: ShellViewHost }): SolidJSX.Element {
             tabindex={view().mobileNavLayout ? -1 : undefined}
             inert={view().navigationSurfaceHidden}
           >
-            <LitRouteHost
-              renderValue={() =>
-                view().settingsTakeover ? view().navigationContent : props.host.navigationSidebar
-              }
-            />
+            <Show when={view().settingsTakeover} fallback={props.host.navigationSidebar}>
+              <LazySettingsSidebar
+                loader={props.host.settingsSidebar}
+                revision={props.host.shellRevision()}
+                sidebarProps={view().settingsSidebarProps}
+              />
+            </Show>
           </div>
         </Show>
         <Show
@@ -323,7 +326,11 @@ function ApplicationShell(props: { host: ShellViewHost }): SolidJSX.Element {
             <LitRouteHost renderValue={() => renderFloatingUpdateCard(view().floatingUpdateCard)} />
           </Show>
           <Show when={view().embedNavigation}>
-            <LitRouteHost renderValue={() => view().navigationContent} />
+            <LazySettingsSidebar
+              loader={props.host.settingsSidebar}
+              revision={props.host.shellRevision()}
+              sidebarProps={view().settingsSidebarProps}
+            />
           </Show>
           <ShellLayoutProvider
             value={{
