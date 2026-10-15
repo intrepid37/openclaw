@@ -7,7 +7,7 @@ type DropdownMenuOptions = {
   onKeydown?: (event: KeyboardEvent) => void;
 };
 
-/** The menu lifetime owns keyboard dismissal and initial focus for Web Awesome menus. */
+/** The menu lifetime owns keyboard dismissal and initial focus in both renderers. */
 export function connectDropdownMenu(
   host: HTMLElement,
   options: DropdownMenuOptions,
