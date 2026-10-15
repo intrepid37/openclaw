@@ -358,6 +358,9 @@ export async function ingestDraftLaneSegments(
     if (!stream) {
       return;
     }
+    if (update.text && turn.streamMode !== "progress") {
+      turn.progressCompositor.beginNewTurn();
+    }
     const rotationPending =
       turn.streamMode !== "progress" &&
       (turn.activeAnswerDraftIsToolProgressOnly ||

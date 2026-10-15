@@ -230,9 +230,6 @@ export async function runTelegramDispatchTurn(turn: Turn) {
                     const previousAnswerDelivered = turn.previewLifecycle.finalDelivered;
                     turn.previewLifecycle.reset();
                     turn.finalDispatchClaimed = false;
-                    if (previousAnswerDelivered) {
-                      turn.progressCompositor.beginNewTurn();
-                    }
                     turn.progressCompositor.beginAssistantMessage();
                     if (turn.answerLane.finalized) {
                       await rotateLaneForNewMessage(turn, turn.answerLane);
