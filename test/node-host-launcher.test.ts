@@ -24,7 +24,7 @@ beforeAll(async () => {
       target: "node24",
       plugins: [createLauncherCommandBoundaryPlugin()],
       banner: {
-        js: 'import { createRequire } from "node:module"; const require = createRequire(import.meta.url);',
+        js: 'import { createRequire as fixtureCreateRequire } from "node:module"; const require = fixtureCreateRequire(import.meta.url);',
       },
       write: false,
     });
