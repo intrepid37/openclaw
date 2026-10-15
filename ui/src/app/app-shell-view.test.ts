@@ -5,7 +5,6 @@ import { render } from "@solidjs/testing-library";
 import { flush } from "solid-js";
 import { expect, it, onTestFinished, vi } from "vitest";
 import type { ControlUiHost, ControlUiReplacement } from "../../../src/plugin-sdk/control-ui.js";
-import type { RouteId } from "../app-route-paths.ts";
 import type { ChatRouteData } from "../pages/chat/session-route-data.ts";
 import type { ControlUiRegistration } from "../plugins/control-ui-capability.ts";
 import "../plugins/control-ui-view.solid.tsx";
@@ -68,7 +67,7 @@ it("reserves session geometry before page mount and clears it on other routes", 
 it("preserves notice padding when a session route resolves without a chat pane", async () => {
   const { owner, view } = await mountShell();
   const content = view.container.querySelector("main.content")!;
-  const router = createRouter<RouteId, ChatRouteData>({
+  const router = createRouter<"chat", ChatRouteData, unknown, ChatRouteData>({
     routes: [
       definePage({ id: "chat", path: "/chat", component: () => ({}), loader: (data) => data }),
     ],
