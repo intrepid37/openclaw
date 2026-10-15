@@ -237,6 +237,7 @@ export async function prepareDirectCompactionAttempt(
   }
   let runtimeModel: ProviderRuntimeModel = resolvedAuthAttempt.model;
   const apiKeyInfo = resolvedAuthAttempt.auth;
+  let runtimeApiKey = apiKeyInfo.apiKey;
   const resolvedRuntimeAuthPlan = resolvedAuthAttempt.plan;
   let hasRuntimeAuthExchange = false;
   try {
@@ -268,7 +269,7 @@ export async function prepareDirectCompactionAttempt(
         preparedAuth: runtimeAuth,
       });
       runtimeModel = applyPreparedRuntimeAuthToModel(runtimeModel, preparedAuth);
-      const runtimeApiKey = preparedAuth?.apiKey ?? apiKeyInfo.apiKey;
+      runtimeApiKey = preparedAuth?.apiKey ?? apiKeyInfo.apiKey;
       hasRuntimeAuthExchange = Boolean(preparedAuth?.apiKey);
       if (!runtimeApiKey) {
         throw new Error(`Provider "${runtimeModel.provider}" runtime auth returned no apiKey.`);
@@ -370,6 +371,7 @@ export async function prepareDirectCompactionAttempt(
         modelRegistry,
         runtimeModel,
         apiKeyInfo,
+        runtimeApiKey,
         resolvedRuntimeAuthPlan,
         hasRuntimeAuthExchange,
         resolvedWorkspace,

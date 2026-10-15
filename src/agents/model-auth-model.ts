@@ -280,7 +280,7 @@ export async function getApiKeyForModelCore(params: {
 /** Clears auth for local OpenAI-compatible servers that explicitly use no auth. */
 export function applyLocalNoAuthHeaderOverride<T extends Model>(
   model: T,
-  auth: ResolvedProviderAuth | null | undefined,
+  auth: Pick<ResolvedProviderAuth, "apiKey"> | null | undefined,
 ): T {
   if (auth?.apiKey !== CUSTOM_LOCAL_AUTH_MARKER || model.api !== "openai-completions") {
     return model;
