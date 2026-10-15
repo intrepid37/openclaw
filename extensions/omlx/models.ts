@@ -4,16 +4,12 @@ import {
   LiveModelCatalogHttpError,
   runLiveProviderCatalog,
 } from "openclaw/plugin-sdk/provider-catalog-live-runtime";
-import {
-  resolveProviderRequestHeaders,
-  sanitizeConfiguredModelProviderRequest,
-} from "openclaw/plugin-sdk/provider-http";
 import { type ModelProviderConfig } from "openclaw/plugin-sdk/provider-model-shared";
 import {
   discoverOpenAICompatibleLocalModels,
   type ProviderCatalogContext,
 } from "openclaw/plugin-sdk/provider-setup";
-import { resolveConfiguredSecretInputString } from "openclaw/plugin-sdk/secret-input-runtime";
+import { resolveOmlxHeaders, resolveOmlxSecret } from "./connection.js";
 import {
   OMLX_API_KEY_ENV_VAR,
   OMLX_DEFAULT_BASE_URL,
@@ -45,61 +41,11 @@ export async function listOmlxModels(params: {
     (configured?.request?.allowPrivateNetwork !== undefined
       ? { allowPrivateNetwork: configured.request.allowPrivateNetwork }
       : undefined);
-  const resolve = async (value: unknown, path: string) => {
-    const result = await resolveConfiguredSecretInputString({
-      config: params.config,
-      env: params.env,
-      value,
-      path,
-    });
-    if (result.unresolvedRefReason) {
-      throw new Error(result.unresolvedRefReason);
-    }
-    return result.value;
-  };
   try {
-    const resolveHeaders = async (inputs: Record<string, unknown> | undefined, path: string) => {
-      const resolved: Record<string, string> = {};
-      for (const [name, value] of Object.entries(inputs ?? {})) {
-        const header = await resolve(value, `${path}.${name}`);
-        if (header) {
-          resolved[name] = header;
-        }
-      }
-      return resolved;
-    };
-    const auth = existing?.request?.auth;
-    const resolvedAuth =
-      auth?.mode === "authorization-bearer"
-        ? {
-            ...auth,
-            token: (await resolve(auth.token, "models.providers.omlx.request.auth.token")) ?? "",
-          }
-        : auth?.mode === "header"
-          ? {
-              ...auth,
-              value: (await resolve(auth.value, "models.providers.omlx.request.auth.value")) ?? "",
-            }
-          : auth;
-    const headers =
-      resolveProviderRequestHeaders({
-        provider: OMLX_PROVIDER_ID,
-        baseUrl,
-        defaultHeaders: await resolveHeaders(existing?.headers, "models.providers.omlx.headers"),
-        request: sanitizeConfiguredModelProviderRequest({
-          headers: await resolveHeaders(
-            existing?.request?.headers,
-            "models.providers.omlx.request.headers",
-          ),
-          auth: resolvedAuth,
-        }),
-      }) ?? {};
-    const hasHeaderAuth =
-      (auth !== undefined && auth.mode !== "provider-default") ||
-      Object.keys(headers).some((name) => name.toLowerCase() === "authorization");
+    const { headers, hasHeaderAuth } = await resolveOmlxHeaders(params, existing);
     const configuredKey =
       params.apiKey === undefined && !hasHeaderAuth
-        ? await resolve(existing?.apiKey, "models.providers.omlx.apiKey")
+        ? await resolveOmlxSecret(params, existing?.apiKey, "models.providers.omlx.apiKey")
         : undefined;
     const profileKey =
       configuredKey === OMLX_API_KEY_ENV_VAR && !params.env[OMLX_API_KEY_ENV_VAR]

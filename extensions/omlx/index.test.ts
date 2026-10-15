@@ -3,7 +3,10 @@ import { capturePluginRegistration } from "openclaw/plugin-sdk/plugin-test-runti
 import { afterEach, describe, expect, it, vi } from "vitest";
 import plugin from "./index.js";
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
+});
 
 function embeddingAdapter() {
   const adapter = capturePluginRegistration(plugin).embeddingProviders[0];
@@ -49,6 +52,12 @@ describe("oMLX registered embedding provider", () => {
               baseUrl: "http://127.0.0.1:18001/v1",
               api: "openai-completions",
               apiKey: "synthetic-provider-key",
+              request: {
+                auth: {
+                  mode: "authorization-bearer",
+                  token: "${OMLX_UNSET_TEST_AUTH}",
+                },
+              },
               models: [],
             },
           },
@@ -100,6 +109,64 @@ describe("oMLX registered embedding provider", () => {
         authorization,
       },
     ]);
+  });
+
+  it.each([
+    {
+      name: "request headers",
+      request: { headers: { authorization: "Bearer ${OMLX_EMBED_TEST_KEY}" } },
+      authorization: "Bearer fixture-omlx-key",
+      customKey: null,
+    },
+    {
+      name: "bearer authentication",
+      request: {
+        auth: { mode: "authorization-bearer" as const, token: "${OMLX_EMBED_TEST_KEY}" },
+      },
+      authorization: "Bearer fixture-omlx-key",
+      customKey: null,
+    },
+    {
+      name: "custom header authentication",
+      request: {
+        auth: {
+          mode: "header" as const,
+          headerName: "X-oMLX-Key",
+          value: "${OMLX_EMBED_TEST_KEY}",
+        },
+      },
+      authorization: null,
+      customKey: "fixture-omlx-key",
+    },
+  ])("inherits $name for embeddings", async ({ request, authorization, customKey }) => {
+    vi.stubEnv("OMLX_EMBED_TEST_KEY", "fixture-omlx-key");
+    let observedHeaders = new Headers();
+    const fetch = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+      observedHeaders = new Headers(init?.headers);
+      return Response.json({ data: [{ index: 0, embedding: [1, 0] }] });
+    });
+    vi.stubGlobal("fetch", fetch);
+    const result = await embeddingAdapter().create({
+      config: {
+        models: {
+          providers: {
+            omlx: {
+              baseUrl: "http://127.0.0.1:8000/v1",
+              api: "openai-completions",
+              apiKey: "stale-provider-key",
+              headers: { Authorization: "Bearer stale-header" },
+              request,
+              models: [],
+            },
+          },
+        },
+      },
+      model: "fixture-embedding",
+    });
+    await expect(result.provider?.embed("orchard")).resolves.toEqual([1, 0]);
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(observedHeaders.get("authorization")).toBe(authorization);
+    expect(observedHeaders.get("x-omlx-key")).toBe(customKey);
   });
 
   it("preserves an explicit private-network denial", async () => {

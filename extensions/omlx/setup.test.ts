@@ -27,7 +27,9 @@ const rows = [
 ];
 
 function fixture(data: unknown = rows, status = 200) {
-  const fetchMock = vi.fn(async () => Response.json({ data }, { status }));
+  const fetchMock = vi.fn(async (_url: string | URL | Request, _init?: RequestInit) =>
+    Response.json({ data }, { status }),
+  );
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;
 }
@@ -114,24 +116,20 @@ describe("oMLX setup through the inference catalog", () => {
         },
       },
     });
-    expect(fetchMock).toHaveBeenCalledWith(
-      "http://127.0.0.1:8000/v1/models",
-      expect.objectContaining({
-        headers: {},
-      }),
-    );
+    expect(fetchMock.mock.lastCall?.[0]).toBe("http://127.0.0.1:8000/v1/models");
+    expect(new Headers(fetchMock.mock.lastCall?.[1]?.headers).get("authorization")).toBeNull();
     await expect(prepareOmlx({ ...ctx, modelRef: "omlx/custom-chat" })).resolves.toBeNull();
     await expect(prepareOmlx({ ...ctx, modelRef: "omlx/missing" })).resolves.toBeNull();
   });
 
-  it.each([[{ id: "unknown-context" }], [{ id: "text-embedding-mini", max_model_len: 32_768 }]])(
-    "does not auto-select unqualified model rows %j",
-    async (data) => {
-      fixture(data);
-      await expect(detectOmlxAvailability(guidedContext())).resolves.toBe(true);
-      await expect(detectOmlx(guidedContext())).resolves.toBeNull();
-    },
-  );
+  it.each([
+    { data: [{ id: "unknown-context" }] },
+    { data: [{ id: "text-embedding-mini", max_model_len: 32_768 }] },
+  ])("does not auto-select unqualified model rows $data", async ({ data }) => {
+    fixture(data);
+    await expect(detectOmlxAvailability(guidedContext())).resolves.toBe(true);
+    await expect(detectOmlx(guidedContext())).resolves.toBeNull();
+  });
 
   it.each([401, 503])("does not produce configuration after HTTP %s", async (status) => {
     fixture(rows, status);
@@ -262,11 +260,8 @@ describe("oMLX setup through the inference catalog", () => {
           ]
         : [],
     );
-    expect(fetchMock).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.objectContaining({
-        headers: key ? { Authorization: `Bearer ${key}` } : {},
-      }),
+    expect(new Headers(fetchMock.mock.lastCall?.[1]?.headers).get("authorization")).toBe(
+      key ? `Bearer ${key}` : null,
     );
   });
 
@@ -287,10 +282,10 @@ describe("oMLX setup through the inference catalog", () => {
       },
     };
     const result = await configureOmlxInteractive(ctx);
-    expect(fetchMock).toHaveBeenCalledWith(
-      "http://127.0.0.1:8000/v1/models",
-      expect.objectContaining({ headers: {} }),
-    );
+    expect(fetchMock.mock.lastCall?.[0]).toBe("http://127.0.0.1:8000/v1/models");
+    const headers = new Headers(fetchMock.mock.lastCall?.[1]?.headers);
+    expect(headers.has("authorization")).toBe(false);
+    expect(headers.has("x-api-key")).toBe(false);
     const provider = result.configPatch?.models?.providers?.omlx;
     expect(provider?.headers).toBeUndefined();
     expect(provider?.request).toBeUndefined();
