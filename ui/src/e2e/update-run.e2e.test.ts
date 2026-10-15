@@ -200,10 +200,7 @@ suite.define(() => {
             ...Array.from({ length: 3 }, (_, index) => ({
               step: `warning:doctor:${index + 1}`,
               status: "completed" as const,
-              detail:
-                "An optional integration needs attention. Review its configuration in Settings. ".repeat(
-                  6,
-                ),
+              detail: `Integration ${index + 1}: ${"An optional integration needs attention. Review its configuration in Settings. ".repeat(6)}`,
             })),
           ],
           verification: {
@@ -215,7 +212,6 @@ suite.define(() => {
         } satisfies UpdateRunRecord;
         await gateway.setMethodResponse("update.runs.get", { run });
         await gateway.setMethodResponse("update.status", { activeRun: null, lastRun: run });
-        const requestsBeforeCompletion = await gateway.getRequests();
         await gateway.emitGatewayEvent("update.run.changed", {
           runId: run.runId,
           phase: run.phase,
@@ -223,62 +219,7 @@ suite.define(() => {
           updatedAtMs: run.updatedAtMs,
         });
         const headline = "✅ OpenClaw updated to 2.0.0 (from 1.0.0); 3 warnings need attention.";
-        try {
-          await runView.getByText(headline, { exact: true }).first().waitFor();
-        } catch (error) {
-          try {
-            const [requestsAfterCompletion, dialogs] = await Promise.all([
-              gateway.getRequests(),
-              page.evaluate(
-                (runId) =>
-                  [...document.querySelectorAll("openclaw-modal-dialog")].map((modal) => {
-                    const nativeDialog = modal.querySelector<HTMLDialogElement>("dialog");
-                    const views = [...modal.querySelectorAll(".update-run-view")];
-                    const headerMessages = [
-                      ...modal.querySelectorAll(
-                        ".update-run-dialog > .exec-approval-header .exec-approval-sub",
-                      ),
-                    ]
-                      .map((element) => element.textContent?.trim() ?? "")
-                      .filter(Boolean);
-                    return {
-                      connected: modal.isConnected,
-                      nativeDialogOpen: nativeDialog?.open ?? null,
-                      nativeDialogConnected: nativeDialog?.isConnected ?? null,
-                      runViewCount: views.length,
-                      runs: views.map((view) => ({
-                        status: view.getAttribute("data-run-status"),
-                        runIdMatchesExpected: view.getAttribute("data-run-id") === runId,
-                        headings: [...view.querySelectorAll("h3, h4")].map(
-                          (heading) => heading.textContent,
-                        ),
-                      })),
-                      headerMessageCount: headerMessages.length,
-                      headerMessages,
-                    };
-                  }),
-                run.runId,
-              ),
-            ]);
-            console.error(
-              "[update-run-e2e] terminal report diagnostics",
-              JSON.stringify({
-                requests: ["update.runs.get", "update.status"].map((method) => ({
-                  method,
-                  before: requestsBeforeCompletion.filter((request) => request.method === method)
-                    .length,
-                  after: requestsAfterCompletion.filter((request) => request.method === method)
-                    .length,
-                })),
-                dialogCount: dialogs.length,
-                dialogs,
-              }),
-            );
-          } catch (diagnosticError) {
-            console.error("[update-run-e2e] terminal report diagnostics failed", diagnosticError);
-          }
-          throw error;
-        }
+        await runView.getByText(headline, { exact: true }).first().waitFor();
         await runView.getByText("Gateway downtime: 1s.", { exact: false }).waitFor();
         expect(await runView.locator('[data-oracle][data-state="pass"]').count()).toBe(4);
         expect(await runView.locator('[data-step="repairing"]').getAttribute("data-status")).toBe(
