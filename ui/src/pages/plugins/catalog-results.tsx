@@ -1,5 +1,5 @@
 import type { JSX } from "@solidjs/web";
-import { For, createMemo, onSettled } from "solid-js";
+import { createMemo, For, onSettled } from "solid-js";
 import { comparePluginCatalogEntries } from "../../../../packages/plugin-package-contract/src/catalog-order.js";
 import { Icon } from "../../components/solid/icon.tsx";
 import { PanelEmptyState } from "../../components/solid/panel-empty-state.tsx";
@@ -378,6 +378,12 @@ function CatalogSection(params: {
 }
 
 function CategoryChips(props: PluginCatalogResultsProps): JSX.Element {
+  const sourceCategories = createMemo(() => props.categories);
+  const categories = createMemo(() =>
+    sourceCategories()
+      .filter((category) => category.slug !== "other")
+      .toSorted((left, right) => left.order - right.order),
+  );
   return (
     <div class="plugin-catalog-chips" role="group" aria-label={t("pluginsPage.categoriesLabel")}>
       <For each={[["all", "pluginsPage.intentAll", "layoutGrid"], ...PROMOTED_SECTIONS] as const}>
@@ -415,12 +421,7 @@ function CategoryChips(props: PluginCatalogResultsProps): JSX.Element {
           ))}
         </>
       ) : undefined}
-      <For
-        each={props.categories
-          .filter((category) => category.slug !== "other")
-          .toSorted((left, right) => left.order - right.order)}
-        keyed={(item) => item.slug}
-      >
+      <For each={categories()} keyed={(item) => item.slug}>
         {(item) => (
           <button
             type="button"
@@ -448,7 +449,7 @@ function renderCatalogEmptyState(): JSX.Element {
 }
 
 function RawResults(props: PluginCatalogResultsProps): JSX.Element {
-  const items = () => props.result?.items ?? [];
+  const items = createMemo(() => props.result?.items ?? []);
   const official = createMemo(() => items().filter((plugin) => plugin.catalog.official));
   const community = createMemo(() => items().filter((plugin) => !plugin.catalog.official));
   return (
@@ -505,18 +506,20 @@ function RawResults(props: PluginCatalogResultsProps): JSX.Element {
 }
 
 function GroupedCatalog(props: PluginCatalogResultsProps): JSX.Element {
-  const items = () => props.result?.items ?? [];
+  const items = createMemo(() => props.result?.items ?? []);
+  const sourceCategories = createMemo(() => props.categories);
   const categories = createMemo(() =>
-    props.categories
+    sourceCategories()
       .filter((category) => category.slug !== "other")
       .toSorted((left, right) => left.order - right.order),
   );
-  const hasAnySection = () =>
-    props.featured.length > 0 ||
-    props.trending.length > 0 ||
+  const hasCategoryItems = createMemo(() =>
     items().some((plugin) =>
       categories().some((category) => plugin.catalog.categories.includes(category.slug)),
-    );
+    ),
+  );
+  const hasAnySection = () =>
+    props.featured.length > 0 || props.trending.length > 0 || hasCategoryItems();
   return (
     <>
       {!hasAnySection() && !props.loading && !props.error && !props.remoteError ? (
