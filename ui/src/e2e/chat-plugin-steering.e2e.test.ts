@@ -112,13 +112,11 @@ suite.define(() => {
             .toBe(colorScheme);
           expect(await gateway.getRequests("chat.startup")).not.toHaveLength(0);
 
-          const notice = pane
-            .locator(".chat-notice")
-            .filter({ hasText: "Advisor steered this run" });
+          const notice = pane.locator(".chat-notice").filter({ hasText: "Advisor guidance" });
           await notice.waitFor();
           expect(await notice.count()).toBe(1);
           expect(await notice.locator(".chat-divider__title").textContent()).toBe(
-            "Advisor steered this run",
+            "Advisor guidance",
           );
           expect(await notice.locator(".chat-divider__metric").textContent()).toMatch(
             /^2:05\s*PM$/u,

@@ -241,7 +241,7 @@ describe("plugin steering notices", () => {
         { kind: "group", role: "user", messages: [{ message: before }] },
         {
           kind: "notice",
-          label: `${name} steered this run`,
+          label: `${name} guidance`,
           text: steering.content,
           timestamp: 1000,
           collapsedBody: true,
@@ -258,7 +258,7 @@ describe("plugin steering notices", () => {
       expect(chatItemStartsDisplayTurn(notice)).toBe(false);
       expect(coalesceAgentRunFrames(items)).toMatchObject([
         { kind: "group", role: "user" },
-        { kind: "notice", label: `${name} steered this run` },
+        { kind: "notice", label: `${name} guidance` },
         { kind: "agent-run-frame", runId: "run", boundaryId: "send:run" },
       ]);
       expect(render([before, steering, after], [], "rollback")).toMatchObject([

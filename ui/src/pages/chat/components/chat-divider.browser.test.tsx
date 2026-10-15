@@ -36,7 +36,7 @@ it.each([
   root.dataset.themeMode = theme;
   await page.viewport(width, 900);
   const pluginName = "release-review-plugin-with-a-long-unbroken-display-name";
-  const label = `${pluginName} steered this run`;
+  const label = `${pluginName} guidance`;
   const item: Extract<ChatItem, { kind: "notice" }> = {
     kind: "notice",
     key: "plugin-steering",

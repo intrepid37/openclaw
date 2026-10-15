@@ -7,6 +7,7 @@ import { rawDataToString } from "@openclaw/gateway-client/websocket-data";
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { WebSocket, WebSocketServer, type RawData } from "ws";
 import { GATEWAY_CLIENT_IDS } from "../../packages/gateway-protocol/src/client-info.js";
+import { createDeferred } from "../../test/helpers/promise.js";
 import { setRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
 import { resolveSessionStorePathCore } from "../config/sessions.js";
 import {
@@ -28,6 +29,7 @@ import { createTranscriptUpdateBroadcastHandler } from "./server-session-events.
 import { GatewayClientRegistry } from "./server/client-registry.js";
 import type { GatewayWsClient } from "./server/ws-types.js";
 import { createSessionRowProjection } from "./session-row-projection.js";
+import * as transcriptReaders from "./session-transcript-readers.js";
 
 const warnSpy = vi.hoisted(() => vi.fn());
 
@@ -161,6 +163,143 @@ describe("broadcast serialization failures", () => {
       }
       expect(message.display).toBe(false);
       expect(message.content).toBe("Model prefix\n\nUse the smaller patch.");
+    });
+  });
+
+  it("withholds live plugin guidance when Control UI session access is revoked after transcript preparation", async () => {
+    await withOpenClawTestState({ scenario: "minimal", prepareProfileCatalog: true }, async () => {
+      const cfg: OpenClawConfig = {};
+      setRuntimeConfigSnapshot(cfg);
+      const owner = ensureProfileForEmail("steering-owner@example.test");
+      const viewer = ensureProfileForEmail("steering-viewer@example.test");
+      const scope = {
+        agentId: "main",
+        sessionKey: "agent:main:steering-live-revocation",
+        sessionId: "steering-live-revocation",
+        storePath: resolveSessionStorePathCore(undefined, { agentId: "main" }),
+      };
+      await upsertSessionEntryCore(scope, {
+        sessionId: scope.sessionId,
+        updatedAt: 1,
+        visibility: "shared",
+        createdActor: { type: "human", source: "profile", id: owner.id },
+      });
+      const message = {
+        role: "user",
+        display: false,
+        content: "Private model prefix\n\nUse the smaller patch.",
+        provenance: { kind: "internal_system", sourceTool: "plugin:reviewer" },
+        __openclaw: {
+          pluginSteering: {
+            pluginId: "reviewer",
+            pluginName: "Reviewer",
+            displayText: "Use the smaller patch.",
+          },
+        },
+      };
+      await appendTranscriptMessage(scope, { eventId: "steer", now: 1, message });
+      const peers = [owner, viewer].map((profile) => {
+        const peer = makeClient(profile.id);
+        peer.client.connect.client = {
+          id: GATEWAY_CLIENT_IDS.CONTROL_UI,
+          version: "test",
+          platform: "test",
+          mode: "webchat",
+        };
+        peer.client.authenticatedUserProfile = {
+          profileId: profile.id,
+          displayName: profile.displayName,
+          hasAvatar: false,
+          updatedAt: profile.updatedAt,
+        };
+        return peer;
+      });
+      const connection = createGatewayConnectionState({
+        scheduler: createTestGatewayScheduler(),
+        bootId: "steering-live-revocation",
+        cfg,
+        getRuntimeConfig: () => cfg,
+      });
+      const projection = await createSessionRowProjection({
+        cfg,
+        modelCatalog: [],
+        getPolicyConfig: () => cfg,
+      });
+      onTestFinished(() => projection.dispose());
+      onTestFinished(connection.attachSessionRowProjection(projection));
+      onTestFinished(() => connection.mentionInbox.dispose());
+      for (const peer of peers) {
+        connection.clients.add(peer.client);
+      }
+      const recipients = new Set(peers.map(({ client }) => client.connId));
+      const handler = createTranscriptUpdateBroadcastHandler({
+        broadcastToConnIds: connection.broadcastToConnIds,
+        sessionEventSubscribers: { getAll: () => recipients },
+        sessionMessageSubscribers: { get: () => recipients },
+        chatAbortControllers: new Map(),
+        getSessionRowProjection: () => projection,
+      });
+      const update = { target: scope, messageId: "steer", messageSeq: 1, message };
+      await handler(update);
+      for (const peer of peers) {
+        const frames = peer.socket.send.mock.calls.map(([frame]) => JSON.parse(String(frame)));
+        expect(frames).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              event: "session.message",
+              payload: expect.objectContaining({
+                message: expect.objectContaining({
+                  content: [{ type: "text", text: "Use the smaller patch." }],
+                }),
+              }),
+            }),
+          ]),
+        );
+        peer.socket.send.mockClear();
+      }
+
+      const prepared = createDeferred();
+      const release = createDeferred();
+      const read = transcriptReaders.readSessionMessageByIdAsync;
+      const readSpy = vi
+        .spyOn(transcriptReaders, "readSessionMessageByIdAsync")
+        .mockImplementationOnce(async (...args) => {
+          const stored = await read(...args);
+          prepared.resolve();
+          await release.promise;
+          return stored;
+        });
+      const pending = handler(update);
+      try {
+        await Promise.race([prepared.promise, pending]);
+        expect(readSpy).toHaveBeenCalledOnce();
+        expect(peers.every((peer) => peer.socket.send.mock.calls.length === 0)).toBe(true);
+        await patchSessionEntryCore(scope, () => ({ visibility: "draft" }));
+      } finally {
+        release.resolve();
+        try {
+          await pending;
+        } finally {
+          readSpy.mockRestore();
+        }
+      }
+      const ownerFrames = peers[0].socket.send.mock.calls.map(([frame]) =>
+        JSON.parse(String(frame)),
+      );
+      expect(ownerFrames).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            event: "session.message",
+            payload: expect.objectContaining({
+              message: expect.objectContaining({
+                display: true,
+                content: [{ type: "text", text: "Use the smaller patch." }],
+              }),
+            }),
+          }),
+        ]),
+      );
+      expect(peers[1].socket.send).not.toHaveBeenCalled();
     });
   });
 

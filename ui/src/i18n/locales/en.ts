@@ -3376,7 +3376,7 @@ export const en: TranslationMap & {
         label: "System · background task",
       },
       pluginSteering: {
-        label: "{plugin} steered this run",
+        label: "{plugin} guidance",
       },
       showContent: "Show content",
       hideContent: "Hide content",

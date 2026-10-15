@@ -389,8 +389,10 @@ guidance is pending rejects the steer rather than silently dropping it.
 The input remains hidden, plugin-authored internal context, with provenance
 `{ kind: "internal_system", sourceTool: "plugin:<id>" }`. It carries no sender or
 owner authority and never answers a pending user question. The Control UI alone
-shows it as a collapsed **Plugin name steered this run** notice with its timestamp;
+shows it as a collapsed **Plugin name guidance** notice with its timestamp;
 expanding the notice reveals the guidance without starting a new chat turn.
+The notice confirms recorded guidance, not delivery: a runtime can reject steering
+after its transcript row has been persisted.
 Steering notes are not sent to chat channels or shown in native clients or the TUI.
 
 Use optional `displayText` for an operator-facing note when `text` includes
