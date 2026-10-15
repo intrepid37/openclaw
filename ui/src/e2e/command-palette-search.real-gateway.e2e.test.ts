@@ -75,19 +75,6 @@ type QueryObservation = {
   notices: string[];
 };
 
-type StartupObservation = {
-  event:
-    | "socket-created"
-    | "socket-error"
-    | "socket-close"
-    | "challenge"
-    | "connect-sent"
-    | "connect-response";
-  ok?: boolean;
-  code?: string;
-  message?: string;
-};
-
 async function seedSessions(owner: OpenClawTestInstance, config: OpenClawConfig) {
   const profile = ensureGatewayOwnerProfile("Synthetic Search Viewer", { env: owner.env });
   const now = Date.now();
@@ -287,25 +274,27 @@ const suite = createControlUiE2eSuite({
   },
 });
 
-function observeSearchTraffic(
-  page: Page,
-  rpc: RpcObservation[],
-  startup: StartupObservation[],
-  redact: (value: string) => string,
-) {
-  const recordStartup = (event: StartupObservation) => {
-    startup.push(event);
-    if (startup.length > 32) {
-      startup.shift();
-    }
+function observeSearchTraffic(page: Page, rpc: RpcObservation[]) {
+  const connection = {
+    sockets: 0,
+    challenges: 0,
+    connectRequests: 0,
+    connectReplies: 0,
+    accepted: 0,
+    rejected: 0,
+    unauthorized: 0,
+    invalidRequest: 0,
+    unavailable: 0,
+    pairingRequired: 0,
+    socketErrors: 0,
+    closes: 0,
+    pageErrors: 0,
   };
+  page.on("pageerror", () => connection.pageErrors++);
   page.on("websocket", (socket) => {
-    recordStartup({ event: "socket-created" });
-    let connectId: string | undefined;
+    connection.sockets++;
     const pending = new Map<string, RpcObservation>();
-    socket.on("socketerror", (message) => {
-      recordStartup({ event: "socket-error", message: redact(message).slice(0, 500) });
-    });
+    let connectId: string | undefined;
     socket.on("framesent", ({ payload }) => {
       const frame = requireRecord(JSON.parse(payload.toString()));
       if (
@@ -315,12 +304,12 @@ function observeSearchTraffic(
       ) {
         return;
       }
-      // Retain only handshake progress, never connect/auth payloads.
       if (frame.method === "connect") {
+        connection.connectRequests++;
         connectId = frame.id;
-        recordStartup({ event: "connect-sent" });
         return;
       }
+      // Never retain connect/auth frames or unrelated RPC payloads.
       if (
         ![
           "sessions.search",
@@ -344,17 +333,21 @@ function observeSearchTraffic(
     socket.on("framereceived", ({ payload }) => {
       const frame = requireRecord(JSON.parse(payload.toString()));
       if (frame.type === "event" && frame.event === "connect.challenge") {
-        recordStartup({ event: "challenge" });
+        connection.challenges++;
       }
       if (frame.type === "res" && frame.id === connectId) {
-        const error = isRecord(frame.error) ? frame.error : {};
-        recordStartup({
-          event: "connect-response",
-          ok: frame.ok === true,
-          code: typeof error.code === "string" ? redact(error.code).slice(0, 100) : undefined,
-          message:
-            typeof error.message === "string" ? redact(error.message).slice(0, 500) : undefined,
-        });
+        connection.connectReplies++;
+        if (frame.ok === true) {
+          connection.accepted++;
+        } else {
+          connection.rejected++;
+          const error = isRecord(frame.error) ? frame.error : {};
+          connection.unauthorized += Number(error.code === "UNAUTHORIZED");
+          connection.invalidRequest += Number(error.code === "INVALID_REQUEST");
+          connection.unavailable += Number(error.code === "UNAVAILABLE");
+          connection.pairingRequired += Number(error.code === "PAIRING_REQUIRED");
+        }
+        return;
       }
       const metric =
         frame.type === "res" && typeof frame.id === "string" ? pending.get(frame.id) : undefined;
@@ -380,11 +373,13 @@ function observeSearchTraffic(
         pending.delete(frame.id);
       }
     });
+    socket.on("socketerror", () => connection.socketErrors++);
     socket.on("close", () => {
-      recordStartup({ event: "socket-close" });
+      connection.closes++;
       pending.clear();
     });
   });
+  return connection;
 }
 
 suite.define(() => {
@@ -393,17 +388,11 @@ suite.define(() => {
       throw new Error("Gateway fixture is not running");
     }
     const owner = instance;
-    const redact = (value: string) =>
-      value
-        .replaceAll(owner.gatewayToken, "[redacted fixture token]")
-        .replaceAll(owner.hookToken, "[redacted fixture token]")
-        .replaceAll(owner.state.root, "[fixture root]")
-        .replaceAll(process.cwd(), "[checkout]");
     const rpc: RpcObservation[] = [];
-    const startup: StartupObservation[] = [];
     const queries: QueryObservation[] = [];
     const assets: Array<{ path: string; servedSha256: string; builtSha256: string }> = [];
     const screenshots: string[] = [];
+    let connection: ReturnType<typeof observeSearchTraffic> | undefined;
     let passed = false;
     const artifactDir = suite.artifactDir;
     try {
@@ -437,7 +426,7 @@ suite.define(() => {
             : {}),
         },
         async ({ page }) => {
-          observeSearchTraffic(page, rpc, startup, redact);
+          connection = observeSearchTraffic(page, rpc);
           expect((await page.goto(url.href))?.status()).toBe(404);
           await enterControlUiSession(page);
           await waitForControlUiGatewayReady(page);
@@ -801,12 +790,15 @@ suite.define(() => {
       passed = true;
     } finally {
       if (!passed) {
-        const gatewayLog = redact(owner.logs());
-        console.error(
-          "[search-proof] startup diagnostics",
-          JSON.stringify({ startup, gatewayLog: gatewayLog.slice(-65_536) }),
+        // CI retains console output; keep only counts and allowlisted error categories.
+        console.error("[search-proof] connection", JSON.stringify(connection));
+        await writeFile(
+          path.join(artifactDir, "gateway-failure.log"),
+          owner
+            .logs()
+            .replaceAll(owner.gatewayToken, "[redacted fixture token]")
+            .replaceAll(owner.hookToken, "[redacted fixture token]"),
         );
-        await writeFile(path.join(artifactDir, "gateway-failure.log"), gatewayLog);
       }
       await writeFile(
         path.join(artifactDir, "search-proof.json"),
