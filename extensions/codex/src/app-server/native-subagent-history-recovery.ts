@@ -183,11 +183,12 @@ export class CodexNativeSubagentHistoryRecovery {
     }
     if (
       !unresolvedAssignment &&
-      threadStatus === "systemerror" &&
+      (threadStatus === "systemerror" || (threadStatus === "idle" && turnId)) &&
       (!turnId || (threadState === "unavailable" && !completion))
     ) {
       // The pinned protocol's paged history distinguishes the failed current
-      // turn from earlier persisted results.
+      // turn from earlier persisted results. An idle runtime can also lose its
+      // live history writer after shutdown while its exact turn remains durable.
       const turnsResponse = await this.requestLatestThreadTurn(childThreadId).catch(
         () => undefined,
       );
@@ -221,6 +222,7 @@ export class CodexNativeSubagentHistoryRecovery {
         nativeTurnState = "active";
         threadState = "active";
       } else if (
+        threadStatus === "systemerror" &&
         !completion &&
         !resumable &&
         latestTurnStatus !== "inprogress" &&

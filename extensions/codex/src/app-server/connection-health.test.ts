@@ -8,8 +8,7 @@ import { createCodexAppServerConnectionHealthService } from "./connection-health
 import { createClientHarness } from "./test-support.js";
 
 const sharedClientMocks = vi.hoisted(() => ({
-  getLeasedSharedCodexAppServerClient: vi.fn(),
-  releaseLeasedSharedCodexAppServerClient: vi.fn(),
+  getSharedCodexAppServerClient: vi.fn(),
 }));
 
 vi.mock("./shared-client.js", () => sharedClientMocks);
@@ -31,8 +30,7 @@ describe("Codex remote WebSocket connection health", () => {
       }
     } finally {
       runningService = undefined;
-      sharedClientMocks.getLeasedSharedCodexAppServerClient.mockReset();
-      sharedClientMocks.releaseLeasedSharedCodexAppServerClient.mockReset();
+      sharedClientMocks.getSharedCodexAppServerClient.mockReset();
       vi.useRealTimers();
     }
   });
@@ -40,7 +38,7 @@ describe("Codex remote WebSocket connection health", () => {
   it("reconnects after the shared remote app-server connection closes", async () => {
     const first = createClient();
     const second = createClient();
-    sharedClientMocks.getLeasedSharedCodexAppServerClient
+    sharedClientMocks.getSharedCodexAppServerClient
       .mockResolvedValueOnce(first.client)
       .mockResolvedValueOnce(second.client);
     const { ctx, service } = createService();
@@ -52,7 +50,7 @@ describe("Codex remote WebSocket connection health", () => {
 
     await vi.waitFor(
       () => {
-        expect(sharedClientMocks.getLeasedSharedCodexAppServerClient).toHaveBeenCalledTimes(2);
+        expect(sharedClientMocks.getSharedCodexAppServerClient).toHaveBeenCalledTimes(2);
         expect(second.addCloseHandler).toHaveBeenCalledOnce();
       },
       { timeout: 3_000 },
@@ -61,13 +59,11 @@ describe("Codex remote WebSocket connection health", () => {
     expect(second.request).not.toHaveBeenCalled();
 
     await service.stop?.(ctx);
-
-    expect(sharedClientMocks.releaseLeasedSharedCodexAppServerClient).toHaveBeenCalledTimes(2);
   });
 
   it("retries a transient remote connection failure without starting a model", async () => {
     const client = createClient();
-    sharedClientMocks.getLeasedSharedCodexAppServerClient
+    sharedClientMocks.getSharedCodexAppServerClient
       .mockRejectedValueOnce(new Error("Opening handshake has timed out"))
       .mockResolvedValueOnce(client.client);
     const { ctx, service } = createService();
@@ -76,7 +72,7 @@ describe("Codex remote WebSocket connection health", () => {
 
     await vi.waitFor(
       () => {
-        expect(sharedClientMocks.getLeasedSharedCodexAppServerClient).toHaveBeenCalledTimes(2);
+        expect(sharedClientMocks.getSharedCodexAppServerClient).toHaveBeenCalledTimes(2);
         expect(client.addCloseHandler).toHaveBeenCalledOnce();
       },
       { timeout: 3_000 },
@@ -84,16 +80,14 @@ describe("Codex remote WebSocket connection health", () => {
     expect(client.request).not.toHaveBeenCalled();
 
     await service.stop?.(ctx);
-
-    expect(sharedClientMocks.releaseLeasedSharedCodexAppServerClient).toHaveBeenCalledOnce();
   });
 
-  it("reconnects when a leased client closed before the health observer subscribed", async () => {
+  it("reconnects when a shared client closed before the health observer subscribed", async () => {
     vi.useFakeTimers();
     const first = createClientHarness();
     first.client.close();
     const next = createClient();
-    sharedClientMocks.getLeasedSharedCodexAppServerClient
+    sharedClientMocks.getSharedCodexAppServerClient
       .mockResolvedValueOnce(first.client)
       .mockResolvedValueOnce(next.client);
     const { ctx, service } = createService();
@@ -101,17 +95,14 @@ describe("Codex remote WebSocket connection health", () => {
     await startService(service, ctx);
     await vi.advanceTimersByTimeAsync(1_250);
 
-    expect(sharedClientMocks.getLeasedSharedCodexAppServerClient).toHaveBeenCalledTimes(2);
-    expect(sharedClientMocks.releaseLeasedSharedCodexAppServerClient).toHaveBeenCalledWith(
-      first.client,
-    );
+    expect(sharedClientMocks.getSharedCodexAppServerClient).toHaveBeenCalledTimes(2);
     expect(next.addCloseHandler).toHaveBeenCalledOnce();
     expect(first.writes).toEqual([]);
     expect(next.request).not.toHaveBeenCalled();
   });
 
   it.each([401, 403])("does not retry an HTTP %i authentication failure", async (statusCode) => {
-    sharedClientMocks.getLeasedSharedCodexAppServerClient.mockRejectedValueOnce(
+    sharedClientMocks.getSharedCodexAppServerClient.mockRejectedValueOnce(
       new Error(`Unexpected server response: ${statusCode}`),
     );
     const { ctx, service } = createService();
@@ -123,11 +114,9 @@ describe("Codex remote WebSocket connection health", () => {
         expect.stringContaining(`Unexpected server response: ${statusCode}`),
       );
     });
-    expect(sharedClientMocks.getLeasedSharedCodexAppServerClient).toHaveBeenCalledOnce();
+    expect(sharedClientMocks.getSharedCodexAppServerClient).toHaveBeenCalledOnce();
 
     await service.stop?.(ctx);
-
-    expect(sharedClientMocks.releaseLeasedSharedCodexAppServerClient).not.toHaveBeenCalled();
   });
 
   it("does not retry an invalid remote app-server configuration", async () => {
@@ -140,7 +129,7 @@ describe("Codex remote WebSocket connection health", () => {
         expect.stringContaining("configuration is invalid"),
       );
     });
-    expect(sharedClientMocks.getLeasedSharedCodexAppServerClient).not.toHaveBeenCalled();
+    expect(sharedClientMocks.getSharedCodexAppServerClient).not.toHaveBeenCalled();
 
     await service.stop?.(ctx);
   });
@@ -151,7 +140,7 @@ describe("Codex remote WebSocket connection health", () => {
     await startService(service, ctx);
     await service.stop?.(ctx);
 
-    expect(sharedClientMocks.getLeasedSharedCodexAppServerClient).not.toHaveBeenCalled();
+    expect(sharedClientMocks.getSharedCodexAppServerClient).not.toHaveBeenCalled();
   });
 });
 

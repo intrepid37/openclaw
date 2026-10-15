@@ -14,7 +14,7 @@ import {
 import { CodexPluginMetadataCache } from "./plugin-metadata-cache.js";
 import { createCodexPluginThreadConfigStartupProvider } from "./plugin-thread-config-deadline.js";
 import { buildCodexPluginThreadConfig } from "./plugin-thread-config.js";
-import type { CodexAppServerRequestParams } from "./protocol.js";
+import type { CodexAppServerRequestParams, v2 } from "./protocol.js";
 
 const pluginConfig = {
   codexPlugins: {
@@ -84,11 +84,60 @@ describe("Codex plugin startup metadata", () => {
     }
   });
 
-  it("rereads changed plugin ownership on a later startup", async () => {
+  it("installs an unconfigured remote plugin before waiting for app inventory", async () => {
+    const appCache = new CodexAppInventoryCache();
+    let installed = false;
+    const request = vi.fn(async (method: string, params?: unknown) => {
+      if (method === "config/read") {
+        expect(params).toEqual({ includeLayers: true });
+        return { config: {}, layers: [] };
+      }
+      if (method === "plugin/installed" || method === "plugin/list") {
+        return pluginList([pluginSummary("google-calendar", { installed, enabled: installed })]);
+      }
+      if (method === "plugin/read") {
+        return pluginDetail("google-calendar", [
+          appSummary(installed ? "google-calendar-app" : "old-calendar-app"),
+        ]);
+      }
+      if (method === "plugin/install") {
+        installed = true;
+        return { authPolicy: "ON_USE", appsNeedingAuth: [] } satisfies v2.PluginInstallResponse;
+      }
+      if (method === "app/installed" || method === "app/read") {
+        return codexAppInventoryResponse(method, [appInfo("google-calendar-app", true, installed)]);
+      }
+      throw new Error(`unexpected request ${method}: ${JSON.stringify(params)}`);
+    });
+
+    const config = await buildCodexPluginThreadConfig({
+      pluginConfig,
+      appCache,
+      appCacheKey: "runtime",
+      pluginDetailCache: new Map(),
+      metadataCache: new CodexPluginMetadataCache(),
+      request,
+    });
+
+    expect(config.configPatch?.apps).toMatchObject({
+      "google-calendar-app": {
+        enabled: true,
+      },
+    });
+    expect(config.policyContext.apps).not.toHaveProperty("old-calendar-app");
+    expect(request.mock.calls.filter(([method]) => method === "plugin/read")).toHaveLength(2);
+    const methods = request.mock.calls.map(([method]) => method);
+    expect(methods.indexOf("plugin/install")).toBeGreaterThan(-1);
+    expect(methods.indexOf("app/installed")).toBeGreaterThan(methods.indexOf("plugin/install"));
+  });
+
+  it("reuses startup manifests for scoped policy checks but rereads them on the next startup", async () => {
     let appId = "first-calendar-app";
+    let denied = false;
     const request = vi.fn(async (method: string, params: unknown) => {
       if (method === "config/read") {
-        return { config: {}, layers: [] };
+        const config = denied ? { apps: { [appId]: { enabled: false } } } : {};
+        return { config, layers: [{ name: { type: "user" }, config }] };
       }
       const plugins = [pluginSummary("google-calendar", { installed: true, enabled: true })];
       if (method === "plugin/installed") {
@@ -113,13 +162,27 @@ describe("Codex plugin startup metadata", () => {
       pluginConfig,
       appCache: new CodexAppInventoryCache(),
       appCacheKey: "runtime-changing-manifest",
-      request,
+      metadataCache: new CodexPluginMetadataCache(),
+      client: { request },
+      inputFingerprint: undefined,
+      enabledPluginConfigKeys: undefined,
+      policy: undefined,
+      requestTimeoutMs: 240_000,
+      signal: new AbortController().signal,
     };
-    const first = await buildCodexPluginThreadConfig(params);
+    const startup = createCodexPluginThreadConfigStartupProvider(params);
+    const first = await startup.build();
+    denied = true;
+    const scoped = await startup.build({ threadId: "loaded-thread" });
+    expect(scoped.policyContext.apps).not.toHaveProperty(appId);
+    expect(request.mock.calls.filter(([method]) => method === "config/read")).toHaveLength(2);
+    expect(request.mock.calls.filter(([method]) => method === "plugin/read")).toHaveLength(1);
+    denied = false;
     appId = "second-calendar-app";
-    const second = await buildCodexPluginThreadConfig(params);
+    const second = await createCodexPluginThreadConfigStartupProvider(params).build();
 
     expect(Object.keys(first.policyContext.apps)).toEqual(["first-calendar-app"]);
     expect(Object.keys(second.policyContext.apps)).toEqual(["second-calendar-app"]);
+    expect(request.mock.calls.filter(([method]) => method === "plugin/read")).toHaveLength(2);
   });
 });

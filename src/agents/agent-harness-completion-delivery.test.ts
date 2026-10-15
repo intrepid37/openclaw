@@ -469,16 +469,21 @@ describe("host-owned harness completion recovery", () => {
       await appendCompletionSource({ target, entry });
 
       expect(await reconcileHarnessCompletionDelivery(request)).toBe("pending");
-      const joined = await deliverAgentHarnessCompletion({
-        scope: createAgentHarnessCompletionScope({ requesterSessionKey: sessionKey }),
-        isSourceSessionAdmissionAllowed: () => true,
-        childSessionKey: runId,
-        childSessionId: "child-1",
-        announceId: announceId.slice("announce:".length),
-        status: "succeeded",
-        result: "result",
-      });
-      expect(joined).toMatchObject({ delivered: false, recoveryPending: true });
+      for (const completion of [
+        { runId, announceId },
+        { runId: "harness:child-2", announceId: "announce:sibling" },
+      ]) {
+        const joined = await deliverAgentHarnessCompletion({
+          scope: createAgentHarnessCompletionScope({ requesterSessionKey: sessionKey }),
+          isSourceSessionAdmissionAllowed: () => true,
+          childSessionKey: completion.runId,
+          childSessionId: "child-1",
+          announceId: completion.announceId.slice("announce:".length),
+          status: "succeeded",
+          result: "result",
+        });
+        expect(joined).toMatchObject({ delivered: false, recoveryPending: true });
+      }
       const reserved = {
         ...entry,
         abortedLastRun: true,
@@ -492,6 +497,16 @@ describe("host-owned harness completion recovery", () => {
       expect(successor.restartRecoveryDeliverySourceRunId).toBe(announceId);
       expect(successor.restartRecoveryHarnessCompletion).toEqual(claim);
       expect(await reconcileHarnessCompletionDelivery(request)).toBe("pending");
+      const sibling = { ...request, sourceRunId: "announce:sibling", taskRunId: "harness:child-2" };
+      expect(await reconcileHarnessCompletionDelivery(sibling)).toBe("pending");
+      expect(
+        await sessionAccessor.readSessionSubmittedInput(
+          { ...target, sessionId: entry.sessionId },
+          `${sibling.sourceRunId}:user`,
+        ),
+      ).toBeUndefined();
+      await replaceSessionEntry(target, terminalEntry(successor));
+      expect(await reconcileHarnessCompletionDelivery(sibling)).toBe("unowned");
     });
   });
 
@@ -710,7 +725,7 @@ describe("review3 custody ownership", () => {
     "distinguishes an actual %s source before transcript commit",
     async (kind) => {
       await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
-        const { entry, request } = await admit(state);
+        const { entry, target, request } = await admit(state);
         const context = {
           sessionKey,
           agentId: "main",
@@ -732,6 +747,18 @@ describe("review3 custody ownership", () => {
           expect(await reconcileHarnessCompletionDelivery(request)).toBe(
             kind === "owned" ? "pending" : "blocked",
           );
+          const sibling = {
+            ...request,
+            sourceRunId: "announce:sibling",
+            taskRunId: "harness:child-2",
+          };
+          expect(await reconcileHarnessCompletionDelivery(sibling)).toBe(
+            kind === "owned" ? "pending" : "unowned",
+          );
+          if (kind === "owned") {
+            await replaceSessionEntry(target, terminalEntry(entry));
+            expect(await reconcileHarnessCompletionDelivery(sibling)).toBe("unowned");
+          }
         } finally {
           if (owner) {
             releaseAgentRunContext(announceId, owner);

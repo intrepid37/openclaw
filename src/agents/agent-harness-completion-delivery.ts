@@ -94,7 +94,8 @@ export async function reconcileHarnessCompletionDelivery(
       `${params.sourceRunId}:user`,
     );
     const current = readCurrent(params);
-    return !current ||
+    if (
+      !current ||
       current.sessionId !== entry.sessionId ||
       current.lifecycleRevision !== entry.lifecycleRevision ||
       current.restartRecoveryDeliverySourceRunId === params.sourceRunId ||
@@ -102,7 +103,18 @@ export async function reconcileHarnessCompletionDelivery(
       hasRestartRecoveryTerminalRun(current, params.sourceRunId) ||
       getRestartRecoveryTerminalDeliveryEvidence(current, params.sourceRunId)?.harnessCompletion ||
       submitted
-      ? "blocked"
+    ) {
+      return "blocked";
+    }
+    // Recovery can outlive the original delivery call. Keep a fresh sibling
+    // outside admission until that exact live/executable claim releases the
+    // requester, rather than staging an input that cannot acquire its claim.
+    const other = current.restartRecoveryHarnessCompletion;
+    return other &&
+      other.requesterAgentId === params.agentId &&
+      other.requesterSessionKey === params.sessionKey &&
+      reconcilePendingHarnessCompletion(params, current, other) === "pending"
+      ? "pending"
       : "unowned";
   }
   if (
@@ -121,6 +133,14 @@ export async function reconcileHarnessCompletionDelivery(
   ) {
     return "delivered";
   }
+  return reconcilePendingHarnessCompletion(params, entry, claim);
+}
+
+function reconcilePendingHarnessCompletion(
+  params: CompletionTarget,
+  entry: SessionEntry,
+  claim: HarnessCompletionRecovery,
+): "pending" | "blocked" {
   if (!getOwedHarnessCompletionTask(claim, entry)) {
     return "blocked";
   }

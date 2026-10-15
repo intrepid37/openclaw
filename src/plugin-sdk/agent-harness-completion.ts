@@ -163,7 +163,7 @@ export async function deliverAgentHarnessCompletion(params: {
             : { recoveryBlocked: true as const }),
           error:
             custody === "pending"
-              ? "completion is owned by requester recovery"
+              ? "requester recovery has pending completion work"
               : "completion recovery receipt or owner is unresolved",
         };
       }

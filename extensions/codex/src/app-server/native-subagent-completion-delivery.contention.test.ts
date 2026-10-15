@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createDeferred } from "openclaw/plugin-sdk/extension-shared";
 import { describe, expect, it, vi } from "vitest";
+import { CodexNativeSubagentCompletionDelivery } from "./native-subagent-completion-delivery.js";
 import { fixture } from "./native-subagent-inventory.test-support.js";
 import {
   CodexNativeSubagentMonitor,
@@ -79,6 +80,164 @@ describe("native completion durable receipts", () => {
 });
 
 describe("native completion settlement", () => {
+  it("releases the last terminal child's transport before its queued handoff and survives synchronous close", async () => {
+    const client = createClient();
+    const runtime = createRuntime();
+    const entered = createDeferred<void>();
+    const secondQueued = createDeferred<void>();
+    const transportReleased = createDeferred<void>();
+    const finishFirst = createDeferred<void>();
+    const releaseClient = vi.fn(() => {
+      client.close();
+      transportReleased.resolve();
+    });
+    runtime.deliverAgentHarnessCompletion.mockImplementationOnce(async () => {
+      entered.resolve();
+      await transportReleased.promise;
+      await finishFirst.promise;
+      return { delivered: true, path: "direct" };
+    });
+    const prototype = CodexNativeSubagentCompletionDelivery.prototype;
+    const observe = vi.spyOn(prototype, "deliverPending");
+    prototype.deliverPending = function (
+      this: CodexNativeSubagentCompletionDelivery,
+      state,
+      child,
+    ) {
+      const attempt = observe.call(this, state, child);
+      if (child.childThreadId === "second-child") {
+        secondQueued.resolve();
+      }
+      return attempt;
+    };
+    const monitor = new CodexNativeSubagentMonitor(client.client, runtime, {
+      retainClient: () => releaseClient,
+      recoveryPollDelaysMs: [],
+    });
+    const parent = await registerParent(monitor);
+    const pending: Promise<void>[] = [];
+    const complete = (threadId: string) =>
+      client.notify(
+        childTurnCompletedNotification({
+          threadId,
+          status: "completed",
+          items: [{ type: "agentMessage", id: "final", phase: "final_answer", text: threadId }],
+        }),
+      );
+    try {
+      parent.bindTurn("parent-turn");
+      await notifyChildStarted(client, "parent-thread", "first-child");
+      await notifyChildStarted(client, "parent-thread", "second-child");
+      await parent.unregister();
+      pending.push(complete("first-child"));
+      await entered.promise;
+      expect(releaseClient).not.toHaveBeenCalled();
+      pending.push(complete("second-child"));
+      await secondQueued.promise;
+      expect(releaseClient).toHaveBeenCalledOnce();
+      expect(runtime.deliverAgentHarnessCompletion).toHaveBeenCalledOnce();
+      finishFirst.resolve();
+      await Promise.all(pending);
+      expect(
+        runtime.deliverAgentHarnessCompletion.mock.calls.map(([input]) => input.childSessionId),
+      ).toEqual(["first-child", "second-child"]);
+      expect(releaseClient).toHaveBeenCalledOnce();
+    } finally {
+      transportReleased.resolve();
+      finishFirst.resolve();
+      await Promise.allSettled(pending);
+      observe.mockRestore();
+      await parent.unregister();
+      await monitor.dispose();
+      client.close();
+    }
+  });
+
+  it.each(["deliver", "foreground receipt", "retirement"] as const)(
+    "serializes sibling requester handoffs and rechecks %s after waiting",
+    async (outcome) => {
+      const client = createClient();
+      const runtime = createRuntime();
+      const entered = createDeferred<void>();
+      const release = createDeferred<void>();
+      runtime.deliverAgentHarnessCompletion.mockImplementationOnce(async () => {
+        entered.resolve();
+        await release.promise;
+        return { delivered: true, path: "direct" };
+      });
+      const monitor = new CodexNativeSubagentMonitor(client.client, runtime, {
+        recoveryPollDelaysMs: [],
+      });
+      const parent = await registerParent(monitor);
+      const other = await registerParent(monitor, "other-parent", "agent:main:other");
+      let foreground: Awaited<ReturnType<typeof registerParent>> | undefined;
+      const pending: Promise<void>[] = [];
+      const complete = (threadId: string) =>
+        client.notify(
+          childTurnCompletedNotification({
+            threadId,
+            status: "completed",
+            items: [{ type: "agentMessage", id: "final", phase: "final_answer", text: threadId }],
+          }),
+        );
+      try {
+        parent.bindTurn("parent-turn");
+        other.bindTurn("other-turn");
+        await notifyChildStarted(client, "parent-thread", "first-child");
+        await notifyChildStarted(client, "parent-thread", "second-child");
+        await notifyChildStarted(client, "other-parent", "other-child");
+        await parent.unregister();
+        await other.unregister();
+        pending.push(complete("first-child"));
+        await entered.promise;
+        pending.push(complete("second-child"));
+        // An unrelated requester must finish while the first response is still held.
+        await complete("other-child");
+        expect(
+          runtime.deliverAgentHarnessCompletion.mock.calls.map(([input]) => input.result),
+        ).toEqual(["first-child", "other-child"]);
+
+        if (outcome === "foreground receipt") {
+          foreground = await registerParent(monitor);
+          foreground.bindTurn("foreground-turn");
+          // A resumed parent may spawn/wait for another child while its detached
+          // handoff is still running. Its native completion cannot wait on this lane.
+          await notifyChildStarted(client, "parent-thread", "foreground-child");
+          await complete("foreground-child");
+          for (const child of ["foreground-child", "second-child"]) {
+            await client.notify(
+              nativeCompletionNotification({
+                turnId: "foreground-turn",
+                agentPath: child,
+                result: child,
+              }),
+            );
+          }
+          await foreground.unregister();
+        } else if (outcome === "retirement") {
+          pending.push(monitor.retireParent("parent-thread"));
+        }
+        release.resolve();
+        await Promise.all(pending);
+        expect(
+          runtime.deliverAgentHarnessCompletion.mock.calls.map(([input]) => input.result),
+        ).toEqual(
+          outcome === "deliver"
+            ? ["first-child", "other-child", "second-child"]
+            : ["first-child", "other-child"],
+        );
+      } finally {
+        release.resolve();
+        await Promise.allSettled(pending);
+        await foreground?.unregister();
+        await parent.unregister();
+        await other.unregister();
+        await monitor.dispose();
+        client.close();
+      }
+    },
+  );
+
   it.each(["receipt", "retired-turn-receipt", "retirement"] as const)(
     "rechecks %s while completion delivery is in flight",
     async (change) => {

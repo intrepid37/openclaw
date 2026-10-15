@@ -199,6 +199,7 @@ export function createCodexPluginThreadConfigStartupProvider(params: {
     ...buildParams
   } = params;
   const metadataCache = configuredMetadataCache ?? defaultCodexPluginMetadataCache;
+  const pluginDetailCache = new Map<string, unknown>();
   return {
     enabled: true,
     // The bound context stores admitted apps only; native config owns excluded
@@ -221,6 +222,7 @@ export function createCodexPluginThreadConfigStartupProvider(params: {
         threadId: buildOptions?.threadId,
         appCache: appCache ?? defaultCodexAppInventoryCache,
         metadataCache,
+        pluginDetailCache,
         failClosedOnTimeout: Boolean(params.scheduledRuntimeAuthority),
         transform: params.scheduledRuntimeAuthority
           ? async (builtConfig, request) =>

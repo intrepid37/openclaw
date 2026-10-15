@@ -98,6 +98,8 @@ type BuildCodexPluginThreadConfigParams = {
   appCache?: CodexAppInventoryCache;
   appCacheKey: string;
   metadataCache?: CodexPluginMetadataCache;
+  /** Successful unscoped manifests owned by one startup attempt. */
+  pluginDetailCache?: Map<string, unknown>;
   nowMs?: number;
 };
 
@@ -155,8 +157,8 @@ export async function buildCodexPluginThreadConfig(
         ? { ...requestParams, threadId: params.threadId }
         : requestParams,
     );
-  // App inventory refreshes do not change plugin ownership during one build.
-  // Keep this local so a later startup always observes updated manifests.
+  // Keep in-flight reads and failures local to this build and its deadline.
+  // The startup owner may reuse settled manifests across scoped policy checks.
   const pluginDetailReads = new Map<string, Promise<unknown>>();
   const inventoryRequest: CodexPluginRuntimeRequest = (method, requestParams) => {
     if (method !== "plugin/read") {
@@ -167,6 +169,9 @@ export async function buildCodexPluginThreadConfig(
     if (cached) {
       return cached;
     }
+    if (params.pluginDetailCache?.has(key)) {
+      return Promise.resolve(params.pluginDetailCache.get(key));
+    }
     let retried = false;
     const pending = threadRequest(method, requestParams)
       .catch((error: unknown) => {
@@ -176,6 +181,10 @@ export async function buildCodexPluginThreadConfig(
         retried = true;
         // The existing request owner keeps this read inside the same deadline.
         return threadRequest(method, requestParams);
+      })
+      .then((response) => {
+        params.pluginDetailCache?.set(key, response);
+        return response;
       })
       .catch((error: unknown) => {
         // Keep definite RPC failures and an exhausted retry for this build so
@@ -254,6 +263,7 @@ export async function buildCodexPluginThreadConfig(
     }
     // Activation can change the installed manifest; its next inventory must be fresh.
     pluginDetailReads.clear();
+    params.pluginDetailCache?.clear();
     const activation = await ensureCodexPluginActivation({
       identity: record.policy,
       request: threadRequest,

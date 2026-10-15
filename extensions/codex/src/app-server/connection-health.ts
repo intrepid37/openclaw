@@ -41,16 +41,15 @@ export function createCodexAppServerConnectionHealthService(
         return;
       }
 
-      const { getLeasedSharedCodexAppServerClient, releaseLeasedSharedCodexAppServerClient } =
-        await import("./shared-client.js");
+      const { getSharedCodexAppServerClient } = await import("./shared-client.js");
       const { sleepWithAbort } = await import("openclaw/plugin-sdk/runtime-env");
       const { isUnsupportedCodexAppServerVersionError } = await import("./client.js");
       if (signal.aborted) {
         return;
       }
-      let leasedClient: CodexAppServerClient | undefined;
       try {
-        leasedClient = await getLeasedSharedCodexAppServerClient({
+        // Observation must not retain the lease whose drain allows graceful retirement.
+        const client = await getSharedCodexAppServerClient({
           pluginConfig,
           config: options.getRuntimeConfig() ?? ctx.config,
           timeoutMs: runtime.requestTimeoutMs,
@@ -62,7 +61,7 @@ export function createCodexAppServerConnectionHealthService(
 
         consecutiveFailures = 0;
         ctx.logger.info("codex app-server remote WebSocket connection is healthy");
-        await waitForCodexAppServerClose(leasedClient, signal);
+        await waitForCodexAppServerClose(client, signal);
         if (!signal.aborted) {
           ctx.logger.warn("codex app-server remote WebSocket disconnected; reconnecting");
         }
@@ -82,10 +81,6 @@ export function createCodexAppServerConnectionHealthService(
           }
           consecutiveFailures += 1;
           ctx.logger.warn(`codex app-server remote WebSocket connection failed: ${message}`);
-        }
-      } finally {
-        if (leasedClient) {
-          releaseLeasedSharedCodexAppServerClient(leasedClient);
         }
       }
 

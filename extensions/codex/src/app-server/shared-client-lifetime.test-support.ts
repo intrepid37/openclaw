@@ -1,13 +1,16 @@
 import { once } from "node:events";
 import { setImmediate } from "node:timers/promises";
 import { createDeferred } from "openclaw/plugin-sdk/extension-shared";
+import type { OpenClawPluginServiceContext } from "openclaw/plugin-sdk/plugin-entry";
 import { expect, it, vi } from "vitest";
 import {
   codexCatalogResidentHomeKey,
   subscribeCodexCatalogEvents,
 } from "../session-catalog-events.js";
+import { resolveCodexStartupTimeoutMs, withCodexStartupTimeout } from "./attempt-timeouts.js";
 import { CodexAppServerClient } from "./client.js";
 import type { CodexAppServerStartOptions } from "./config.js";
+import { createCodexAppServerConnectionHealthService } from "./connection-health.js";
 import { codexNativeSubagentMonitorRuntime } from "./native-subagent-monitor.js";
 import { registerSharedClientAuthRefreshTests } from "./shared-client-auth-refresh.test-support.js";
 import { waitForCodexAppServerClientExit } from "./shared-client-lifecycle.js";
@@ -24,6 +27,9 @@ import {
 } from "./shared-client.js";
 import { createClientHarness } from "./test-support.js";
 import { CodexAdoptedThreadActiveError } from "./thread-lifecycle-errors.js";
+import { createCodexThreadLifecycleTimingTracker } from "./thread-lifecycle-timing.js";
+import { releaseCodexBoundLiveThread } from "./thread-lifecycle-warm.js";
+import { withCodexAppServerThreadMutation } from "./thread-ownership-queue.js";
 import {
   releaseCodexAppServerBindingSubscription,
   retainCodexAppServerBindingSubscription,
@@ -36,6 +42,97 @@ export function registerSharedClientLifetimeTests(
   rejectAuth: (error: Error) => void,
 ) {
   registerSharedClientAuthRefreshTests();
+
+  it("retires a health-observed client after real work drains without blocking the next startup", async () => {
+    const old = createClientHarness();
+    const replacement = createClientHarness();
+    vi.spyOn(CodexAppServerClient, "start").mockResolvedValueOnce(old.client);
+    const healthy = createDeferred<void>();
+    const ctx: OpenClawPluginServiceContext = {
+      config: {},
+      stateDir: "/tmp/openclaw-codex-health-retirement-test",
+      logger: {
+        debug: vi.fn(),
+        info: vi.fn(() => healthy.resolve()),
+        warn: vi.fn(),
+        error: vi.fn(),
+      },
+    };
+    const health = createCodexAppServerConnectionHealthService({
+      getPluginConfig: () => ({
+        appServer: { transport: "websocket", url: "ws://127.0.0.1:39175" },
+      }),
+      getRuntimeConfig: () => ctx.config,
+    });
+    await health.start(ctx);
+    await sendInitializeResult(old, "openclaw/0.153.4 (Linux; test)");
+    await healthy.promise;
+    const releasePeer = retainSharedCodexAppServerClientIfCurrent(old.client);
+    expect(releasePeer).toBeTypeOf("function");
+    const timeoutMs = resolveCodexStartupTimeoutMs({
+      timeoutMs: 48 * 60 * 60_000,
+      requestTimeoutMs: 240_000,
+    });
+    expect(timeoutMs).toBe(720_000);
+    const releasedSubscription = createDeferred<void>();
+    const timing = createCodexThreadLifecycleTimingTracker();
+    const measure = timing.measure;
+    timing.measure = async (name, run) => {
+      const result = await measure(name, run);
+      releasedSubscription.resolve();
+      return result;
+    };
+    let settled = false;
+    let successorEntered = false;
+    let handoff: Promise<boolean> | undefined;
+    let successor: Promise<void> | undefined;
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    try {
+      expect(retireSharedCodexAppServerClientIfCurrent(old.client)).toEqual({
+        activeLeases: 1,
+        closed: false,
+      });
+      handoff = withCodexStartupTimeout({
+        timeoutMs,
+        signal: new AbortController().signal,
+        operation: () =>
+          withCodexAppServerThreadMutation("health-retirement-thread", () =>
+            releaseCodexBoundLiveThread({
+              client: replacement.client,
+              clientId: replacement.client.getInstanceId(),
+              ownerClientId: old.client.getInstanceId(),
+              threadId: "health-retirement-thread",
+              lifecycleTiming: timing,
+            }),
+          ).finally(() => {
+            settled = true;
+          }),
+      });
+      await releasedSubscription.promise;
+      successor = withCodexAppServerThreadMutation("health-retirement-thread", async () => {
+        successorEntered = true;
+      });
+      // The real peer still owns the transport; observation must not force it closed.
+      expect(old.client.getCloseError()).toBeUndefined();
+      expect(settled).toBe(false);
+      expect(successorEntered).toBe(false);
+      await expect(
+        withCodexAppServerThreadMutation("unrelated-thread", async () => "works"),
+      ).resolves.toBe("works");
+      releasePeer?.();
+      await expect(handoff).resolves.toBe(false);
+      await successor;
+      expect(settled).toBe(true);
+      expect(successorEntered).toBe(true);
+      expect(old.client.getCloseError()).toBeDefined();
+    } finally {
+      releasePeer?.();
+      await health.stop?.(ctx);
+      await handoff;
+      await successor;
+      replacement.client.close();
+    }
+  });
 
   it.each(["shared", "isolated"] as const)(
     "joins %s transport startup and closes a client returned after its deadline",

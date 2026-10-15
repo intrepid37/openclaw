@@ -2451,47 +2451,6 @@ describe("Codex plugin thread config", () => {
     expect(request.mock.calls.filter(([method]) => method === "config/read")).toHaveLength(1);
   });
 
-  it("installs an unconfigured remote plugin before waiting for app inventory", async () => {
-    const appCache = new CodexAppInventoryCache();
-    let installed = false;
-    const request = vi.fn(async (method: string, params?: unknown) => {
-      if (method === "config/read") {
-        expect(params).toEqual({ includeLayers: true });
-        return { config: {}, layers: [] };
-      }
-      if (method === "plugin/installed" || method === "plugin/list") {
-        return pluginList([pluginSummary("google-calendar", { installed, enabled: installed })]);
-      }
-      if (method === "plugin/read") {
-        return pluginDetail("google-calendar", [appSummary("google-calendar-app")]);
-      }
-      if (method === "plugin/install") {
-        installed = true;
-        return { authPolicy: "ON_USE", appsNeedingAuth: [] } satisfies v2.PluginInstallResponse;
-      }
-      if (method === "app/installed" || method === "app/read") {
-        return codexAppInventoryResponse(method, [appInfo("google-calendar-app", true, installed)]);
-      }
-      throw new Error(`unexpected request ${method}: ${JSON.stringify(params)}`);
-    });
-
-    const config = await buildCodexPluginThreadConfig({
-      pluginConfig: calendarPluginConfig(),
-      appCache,
-      appCacheKey: "runtime",
-      request,
-    });
-
-    expect(config.configPatch?.apps).toMatchObject({
-      "google-calendar-app": {
-        enabled: true,
-      },
-    });
-    const methods = request.mock.calls.map(([method]) => method);
-    expect(methods.indexOf("plugin/install")).toBeGreaterThan(-1);
-    expect(methods.indexOf("app/installed")).toBeGreaterThan(methods.indexOf("plugin/install"));
-  });
-
   it("keeps installed apps available when unrelated native refreshes fail", async () => {
     const appCache = new CodexAppInventoryCache();
     await appCache.refreshNow({

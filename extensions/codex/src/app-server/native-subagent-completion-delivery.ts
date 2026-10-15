@@ -1,5 +1,7 @@
 import { isDurableAgentHarnessCompletionDelivery } from "openclaw/plugin-sdk/agent-harness-completion";
 import { embeddedAgentLog, formatErrorMessage } from "openclaw/plugin-sdk/agent-harness-runtime";
+import { resolveGlobalSingleton } from "openclaw/plugin-sdk/global-singleton";
+import { KeyedAsyncQueue } from "openclaw/plugin-sdk/keyed-async-queue";
 import { readCodexNativeSubagentRunId } from "./native-subagent-assignment.js";
 import { assertHistoryOwnerMatchesRegistration } from "./native-subagent-history-owner.js";
 import type {
@@ -25,6 +27,10 @@ const DEFAULT_COMPLETION_DELIVERY_RETRY_DELAYS_MS = [
   5_000, 15_000, 30_000, 60_000, 120_000, 300_000,
 ];
 const completionDeliveryOwners = new Map<string, ChildState>();
+const detachedRequesterDeliveries = resolveGlobalSingleton(
+  Symbol.for("openclaw.codexNativeDetachedRequesterDeliveries"),
+  () => new KeyedAsyncQueue(),
+);
 
 export class CodexNativeSubagentCompletionDelivery {
   private readonly retryDelaysMs: readonly number[];
@@ -41,8 +47,28 @@ export class CodexNativeSubagentCompletionDelivery {
     if (existing) {
       return existing;
     }
-    const attempt = this.deliverAttempt(state, childState);
+    const scope = state.completionScope;
+    // Detached siblings must not race to claim the same requester turn. Native
+    // foreground completions bypass this lane: the running parent can await its
+    // children even while the detached handoff that started it is outstanding.
+    // deliverAttempt rechecks current ownership and native receipts after waiting.
+    const attempt =
+      state.owners.size > 0 || !scope
+        ? this.deliverAttempt(state, childState)
+        : detachedRequesterDeliveries.enqueue(
+            JSON.stringify([
+              scope.requesterAgentId,
+              scope.requesterSessionKey,
+              state.historyOwner?.sessionId,
+              state.historyOwner?.lifecycleRevision,
+            ]),
+            () => this.deliverAttempt(state, childState),
+          );
     this.attempts.set(childState, attempt);
+    // A handoff can wait for this transport's retirement. Release its last
+    // terminal child before waiting in the requester queue, but publish the
+    // attempt first so synchronous client close joins it instead of readmitting.
+    this.dependencies.releaseClientRetentionIfIdle();
     const release = () => {
       if (this.attempts.get(childState) === attempt) {
         this.attempts.delete(childState);
@@ -244,7 +270,6 @@ export class CodexNativeSubagentCompletionDelivery {
       this.dependencies.unregisterChild(child);
       return false;
     }
-    this.dependencies.releaseClientRetentionIfIdle();
     return true;
   }
 

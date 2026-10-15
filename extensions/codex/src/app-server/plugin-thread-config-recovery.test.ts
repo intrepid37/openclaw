@@ -183,7 +183,7 @@ describe("Codex plugin omission recovery", () => {
     expect(fixture.slackDetail).toHaveBeenCalledTimes(1);
   });
 
-  it("records a warm-cache omission and recovers on the next startup", async () => {
+  it("records an omission and retries failed manifests on a later build", async () => {
     const warn = vi.spyOn(embeddedAgentLog, "warn").mockImplementation(() => {});
     const fixture = pluginStartupFixture();
     fixture.slackDetail.mockRejectedValueOnce(new Error("private-error-marker"));
@@ -202,7 +202,7 @@ describe("Codex plugin omission recovery", () => {
     expect(next.policyContext.apps["slack-app"]).toBeDefined();
     expect(next.diagnostics).toEqual([]);
     expect(fixture.slackDetail).toHaveBeenCalledTimes(2);
-    expect(fixture.healthyDetail).toHaveBeenCalledTimes(2);
+    expect(fixture.healthyDetail).toHaveBeenCalledTimes(1);
     expect(warn).toHaveBeenCalledWith(
       "codex plugin thread config degraded",
       expect.objectContaining({
