@@ -1250,7 +1250,8 @@ export async function runDreamingSweepPhases(
   params: DreamingSweepParams,
 ): Promise<{ narratives: PreparedDreamNarrative[]; failed: boolean }> {
   // All phases in one sweep share the same observation and report timestamp.
-  const sweepNowMs = params.nowMs ?? Date.now();
+  const sweepNowMs =
+    typeof params.nowMs === "number" && Number.isFinite(params.nowMs) ? params.nowMs : Date.now();
   const admissionPolicy = resolveAdmissionPolicy(params.pluginConfig);
   const narratives: PreparedDreamNarrative[] = [];
   let failed = false;

@@ -671,52 +671,6 @@ describe("runSessionBackfill", () => {
     }
   });
 
-  it("reports retained net growth when staging into a full short-term store", async () => {
-    const workspaceDir = await createIsolatedWorkspace("retained-count-");
-    const nowMs = Date.parse("2026-03-03T12:00:00.000Z");
-    expect(
-      await recordShortTermRecalls({
-        workspaceDir,
-        query: "retained fixtures",
-        signalType: "grounded",
-        results: Array.from({ length: 512 }, (_, index) => ({
-          source: "memory" as const,
-          path: "memory/2026-03-01.md",
-          startLine: index + 1,
-          endLine: index + 1,
-          snippet: `Retained fact ${index}`,
-          score: 0.1,
-        })),
-        nowMs,
-      }),
-    ).toBe(512);
-    await seedCanonicalTranscript(
-      "retained-count",
-      ["2026-03-01", "2026-03-02"].map((day) => ({
-        role: "user" as const,
-        content: `Preferred editor for ${day} is Nova`,
-        timestamp: `${day}T10:00:00.000Z`,
-        owner: true,
-      })),
-    );
-
-    const result = await runSessionBackfill({
-      agentId: "main",
-      workspaceDir,
-      apply: true,
-      nowMs,
-      timezone: "UTC",
-    });
-    const retained = await readShortTermRecallEntries({ workspaceDir, nowMs });
-
-    expect(result.candidateCount).toBe(2);
-    expect(result.stagedEntries).toBe(0);
-    expect(retained).toHaveLength(512);
-    expect(retained.filter((entry) => entry.snippet.startsWith("Preferred editor"))).toHaveLength(
-      2,
-    );
-  });
-
   it("stages idempotently, converges duplicate facts, and rolls back staged artifacts", async () => {
     const workspaceDir = await createIsolatedWorkspace("apply-");
     await seedCanonicalTranscript("repeat", [

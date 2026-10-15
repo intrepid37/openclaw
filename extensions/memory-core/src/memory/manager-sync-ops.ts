@@ -381,7 +381,7 @@ export abstract class MemoryManagerSyncOps extends MemoryManagerSourceSyncOps {
           needsFullReindex,
           needsFullSessionReindex,
           targetArchiveFiles: targetArchiveFiles ? Array.from(targetArchiveFiles) : undefined,
-          progress,
+          progress: progress ?? undefined,
         });
         if (recoveringSessionFullRetry && !this.memoryFullRetryDirty) {
           this.clearFullReindexRetryBackoff();

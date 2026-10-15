@@ -120,9 +120,7 @@ function parseStoredScope(value: string | null, length: number): string[] | null
     ) {
       return parsed;
     }
-  } catch {
-    // Legacy scopes are plain strings rather than JSON tuples.
-  }
+  } catch {}
   return null;
 }
 

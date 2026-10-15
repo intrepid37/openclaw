@@ -174,7 +174,9 @@ export function upsertMemoryEmbeddingCache(params: {
   }
   const uniqueRows = [...lastRows].toSorted((left, right) => left[1] - right[1]);
   const maxEntries =
-    params.maxEntries !== undefined && params.maxEntries > 0
+    typeof params.maxEntries === "number" &&
+    Number.isFinite(params.maxEntries) &&
+    params.maxEntries > 0
       ? Math.floor(params.maxEntries)
       : undefined;
   const retainedRows = maxEntries === undefined ? uniqueRows : uniqueRows.slice(-maxEntries);

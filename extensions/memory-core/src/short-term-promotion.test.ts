@@ -95,7 +95,7 @@ function recordMemoryRecalls(
   query: string,
   results: RecallResult[],
   options: Omit<RecordRecallParams, "workspaceDir" | "query" | "results"> = {},
-): Promise<number> {
+): Promise<void> {
   return recordShortTermRecalls({ ...options, workspaceDir, query, results });
 }
 
@@ -287,7 +287,7 @@ describe("short-term promotion", () => {
     return await rankAllCandidates(workspaceDir);
   }
 
-  function recordRotateCredentialsRecall(workspaceDir: string) {
+  function recordRotateCredentialsRecall(workspaceDir: string): Promise<void> {
     return recordMemoryRecalls(
       workspaceDir,
       "rotate creds",

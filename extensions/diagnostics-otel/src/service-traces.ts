@@ -248,7 +248,6 @@ export function createDiagnosticsTraceRuntime(tracer: Tracer) {
     attributes: Record<string, string | number | boolean>,
   ) => {
     span.setAttributes?.(redactOtelAttributes(attributes));
-    return span;
   };
   const retainTrustedSpanContext = (
     traceId: string,

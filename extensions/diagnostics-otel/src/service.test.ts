@@ -17,7 +17,7 @@ const telemetryState = vi.hoisted(() => {
     name: string;
     addEvent: ReturnType<typeof vi.fn>;
     end: ReturnType<typeof vi.fn>;
-    setAttributes: ReturnType<typeof vi.fn<(attributes: Record<string, unknown>) => void>>;
+    setAttributes: ReturnType<typeof vi.fn>;
     setStatus: ReturnType<typeof vi.fn>;
     spanContext: ReturnType<typeof vi.fn<() => TestSpanContext>>;
   }> = [];
@@ -28,7 +28,7 @@ const telemetryState = vi.hoisted(() => {
       const span = {
         addEvent: vi.fn(),
         end: vi.fn(),
-        setAttributes: vi.fn<(attributes: Record<string, unknown>) => void>(),
+        setAttributes: vi.fn(),
         setStatus: vi.fn(),
         spanContext: vi.fn<() => TestSpanContext>(() => ({
           traceId: "4bf92f3577b34da6a3ce929d0e0e4736",
@@ -394,13 +394,17 @@ function mockCall(mock: { mock: { calls: unknown[][] } }, callIndex = 0): unknow
   return call;
 }
 
+function mockCallArg(mock: { mock: { calls: unknown[][] } }, argIndex: number, callIndex = 0) {
+  return mockCall(mock, callIndex)[argIndex];
+}
+
 type TestExporterOptions = {
   url?: string;
   httpAgentOptions?: (protocol: string) => unknown;
 };
 
 function firstExporterOptions(mock: { mock: { calls: unknown[][] } }): TestExporterOptions {
-  return mockCall(mock)[0] as TestExporterOptions;
+  return mockCallArg(mock, 0) as TestExporterOptions;
 }
 
 function createNodeProxyAgentCalls(): Array<{
@@ -445,28 +449,28 @@ type TestSpanProcessorOptions = {
 };
 
 function firstSpanProcessorOptions(): TestSpanProcessorOptions {
-  return mockCall(spanProcessorCtor)[1] as TestSpanProcessorOptions;
+  return mockCallArg(spanProcessorCtor, 1) as TestSpanProcessorOptions;
 }
 
 function firstMetricReaderOptions(): {
   exportIntervalMillis?: number;
   exportTimeoutMillis?: number;
 } {
-  return mockCall(metricReaderCtor)[0] as {
+  return mockCallArg(metricReaderCtor, 0) as {
     exportIntervalMillis?: number;
     exportTimeoutMillis?: number;
   };
 }
 
 function firstLogProcessorOptions(): { exporter?: unknown; scheduledDelayMillis?: number } {
-  return mockCall(logProcessorCtor)[0] as {
+  return mockCallArg(logProcessorCtor, 0) as {
     exporter?: unknown;
     scheduledDelayMillis?: number;
   };
 }
 
 function firstSetSpanContext(): Record<string, unknown> {
-  return mockCall(telemetryState.tracer.setSpanContext)[1] as Record<string, unknown>;
+  return mockCallArg(telemetryState.tracer.setSpanContext, 1) as Record<string, unknown>;
 }
 
 function spanByName(name: string): (typeof telemetryState.spans)[number] {
@@ -478,10 +482,7 @@ function spanByName(name: string): (typeof telemetryState.spans)[number] {
 }
 
 function firstSpanAttributes(name: string): Record<string, unknown> {
-  return spanByName(name).setAttributes.mock.calls.reduce(
-    (attributes, [update]) => ({ ...attributes, ...update }),
-    { ...startedSpanOptions(name)?.attributes },
-  );
+  return mockCallArg(spanByName(name).setAttributes, 0) as Record<string, unknown>;
 }
 
 function expectAbsent(attributes: Record<string, unknown> | undefined, ...keys: string[]) {
@@ -497,7 +498,7 @@ function stringAttribute(attrs: Record<string, unknown> | undefined, key: string
 }
 
 function firstSpanEndTime(name: string): unknown {
-  return mockCall(spanByName(name).end)[0];
+  return mockCallArg(spanByName(name).end, 0);
 }
 
 function firstCounterAddCall(name: string): [unknown, Record<string, unknown>?] {
@@ -1564,7 +1565,7 @@ describe("diagnostics-otel service", () => {
       trace,
     });
     await flushDiagnosticEvents();
-    const emitCall = mockCall(logEmit)[0] as {
+    const emitCall = mockCallArg(logEmit, 0) as {
       attributes?: Record<string, unknown>;
       body?: string;
       context?: unknown;
@@ -2326,7 +2327,7 @@ describe("diagnostics-otel service", () => {
       );
       await flushDiagnosticEvents();
       if (owner === "run") {
-        const status = mockCall(spanByName("openclaw.run").setStatus)[0] as { message?: string };
+        const status = mockCallArg(spanByName("openclaw.run").setStatus, 0) as { message?: string };
         expect(status.message).not.toContain(secret);
         expect(status.message).toMatch(/\.\.\.\(truncated\)$/u);
         expect(status.message?.length).toBeLessThanOrEqual(4 * 1024 + 20);
@@ -2368,8 +2369,11 @@ describe("diagnostics-otel service", () => {
         exportTimeoutMillis: selfObservation ? 2000 : 30_000,
       });
       if (selfObservation) {
-        expect(mockCall(meterProviderCtor)[0]).toHaveProperty("sdkMetricsEnabled", true);
-        expect(mockCall(traceProviderCtor)[0]).toHaveProperty("meterProvider", expect.anything());
+        expect(mockCallArg(meterProviderCtor, 0)).toHaveProperty("sdkMetricsEnabled", true);
+        expect(mockCallArg(traceProviderCtor, 0)).toHaveProperty(
+          "meterProvider",
+          expect.anything(),
+        );
         expect(firstSpanProcessorOptions().selfObsMeterProvider).toBeDefined();
         expect(diagWarn).toHaveBeenCalledWith(
           "OTEL_METRIC_EXPORT_TIMEOUT (3000) is greater than the active metric export interval (2000). Clamping timeout to interval value.",
@@ -2651,7 +2655,7 @@ describe("diagnostics-otel service", () => {
     } as Parameters<typeof emitDiagnosticEvent>[0]);
     await flushDiagnosticEvents();
 
-    const emitCall = mockCall(logEmit)[0] as {
+    const emitCall = mockCallArg(logEmit, 0) as {
       attributes: Record<string, unknown>;
       body: string;
       context?: unknown;

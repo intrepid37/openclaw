@@ -54,12 +54,14 @@ function projectRecallMetadata(
     | { importance: number | null; triggers: string | null; project_key: string | null }
     | undefined,
 ) {
-  const triggers = row?.triggers?.trim();
-  const projectKey = row?.project_key?.trim();
   return {
-    ...(row?.importance != null ? { importance: row.importance } : {}),
-    ...(triggers ? { triggers } : {}),
-    ...(projectKey ? { projectKey } : {}),
+    ...(typeof row?.importance === "number" ? { importance: row.importance } : {}),
+    ...(typeof row?.triggers === "string" && row.triggers.trim()
+      ? { triggers: row.triggers.trim() }
+      : {}),
+    ...(typeof row?.project_key === "string" && row.project_key.trim()
+      ? { projectKey: row.project_key.trim() }
+      : {}),
   };
 }
 
@@ -156,7 +158,7 @@ export abstract class MemoryKeywordRetrieval extends MemoryProviderLifecycle {
           sessionKind: row.session_kind,
           observedAt: row.observed_at,
         };
-        if (row.supersedes_key !== null) {
+        if (typeof row.supersedes_key === "string") {
           candidate.provenance.supersedesKey = row.supersedes_key;
         }
         return candidate;

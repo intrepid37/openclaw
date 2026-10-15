@@ -19,7 +19,7 @@ function applyTemporalDecayToScore(params: {
 }): number {
   const { halfLifeDays } = params;
   const clampedAge = Math.max(0, params.ageInDays);
-  if (halfLifeDays <= 0) {
+  if (!Number.isFinite(halfLifeDays) || halfLifeDays <= 0 || !Number.isFinite(clampedAge)) {
     return params.score;
   }
   return params.score * Math.exp(-(Math.LN2 / halfLifeDays) * clampedAge);
@@ -80,6 +80,9 @@ async function extractTimestamp(params: {
 
   try {
     const stat = await fs.stat(absolutePath);
+    if (!Number.isFinite(stat.mtimeMs)) {
+      return null;
+    }
     return new Date(stat.mtimeMs);
   } catch {
     return null;
@@ -98,7 +101,7 @@ export async function applyTemporalDecayToHybridResults<
 }): Promise<T[]> {
   const config = { ...DEFAULT_TEMPORAL_DECAY_CONFIG, ...params.temporalDecay };
   if (!config.enabled) {
-    return params.results;
+    return [...params.results];
   }
 
   const nowMs = params.nowMs ?? Date.now();

@@ -151,12 +151,13 @@ export function createHarnessRecorders(runtime: DiagnosticsRecorderRuntime) {
       const trackedSpan = trustedTrace?.spanId
         ? runtime.activeTrustedSpans.get(trustedTrace.spanId)
         : undefined;
-      const span = trackedSpan
-        ? runtime.setSpanAttrs(trackedSpan, spanAttrs)
-        : runtime.spanWithDuration("openclaw.harness.run", spanAttrs, evt.durationMs, {
-            parentContext: runtime.activeTrustedParentContext(evt, metadata),
-            endTimeMs: evt.ts,
-          });
+      const span =
+        trackedSpan ??
+        runtime.spanWithDuration("openclaw.harness.run", spanAttrs, evt.durationMs, {
+          parentContext: runtime.activeTrustedParentContext(evt, metadata),
+          endTimeMs: evt.ts,
+        });
+      runtime.setSpanAttrs(span, spanAttrs);
       if (evt.type === "harness.run.error" || evt.outcome === "error") {
         span.setStatus({ code: SpanStatusCode.ERROR, message: redactedError ?? errorType });
       }

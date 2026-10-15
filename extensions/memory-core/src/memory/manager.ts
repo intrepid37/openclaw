@@ -81,7 +81,7 @@ export class MemoryIndexManager extends MemorySearchOrchestration implements Mem
   protected providerUnavailableReason?: string;
   protected override providerLifecycle: MemoryProviderLifecycleState;
   protected batch: MemoryEmbeddingBatchConfig;
-  protected readonly publishedDatabase: MemoryIndexDatabase;
+  protected publishedDatabase: MemoryIndexDatabase;
   protected readonly cache: { enabled: boolean; maxEntries?: number };
   private syncing: Promise<void> | null = null;
   private syncingMemoryWatchGeneration = 0;

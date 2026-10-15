@@ -32,7 +32,11 @@ export function resolveMemoryPromotionFileMaxChars(params: {
     const configuredLimit = agentId
       ? (resolveAgentConfig(params.cfg ?? {}, agentId)?.bootstrapMaxChars ?? defaultBootstrapLimit)
       : defaultBootstrapLimit;
-    if (configuredLimit !== undefined && configuredLimit > 0) {
+    if (
+      typeof configuredLimit === "number" &&
+      Number.isFinite(configuredLimit) &&
+      configuredLimit > 0
+    ) {
       limit = Math.min(limit, Math.floor(configuredLimit));
     }
   }

@@ -50,6 +50,7 @@ import {
 } from "./session-ingestion.js";
 import { buildPromotionMarker, hashMemoryContent } from "./short-term-promotion-memory-write.js";
 import {
+  readShortTermRecallEntries,
   recordShortTermRecalls,
   removeGroundedShortTermCandidates,
 } from "./short-term-promotion.js";
@@ -200,7 +201,7 @@ function mergeSessionBackfillFileProgress(params: {
   scans: SessionBackfillScan[];
   selectedHashes: ReadonlySet<string>;
 }): Record<string, SessionIngestionFileState> {
-  const files = params.current;
+  const files = { ...params.current };
   for (const scan of params.scans) {
     const firstUnselected = scan.candidates.find(
       (candidate) => !params.selectedHashes.has(candidate.hash),
@@ -212,8 +213,10 @@ function mergeSessionBackfillFileProgress(params: {
     ];
     // The full snapshot identity stays paired while only its consumption cursor rewinds.
     // Session ingestion uses that snapshot as the append-prefix proof on the next scan.
-    scan.fileState.lastContentLine = Math.min(...progressStops);
-    files[scan.stateKey] = scan.fileState;
+    files[scan.stateKey] = {
+      ...scan.fileState,
+      lastContentLine: Math.min(...progressStops),
+    };
   }
   return files;
 }
@@ -328,7 +331,10 @@ async function applySessionBackfillDays(params: {
   nowMs: number;
   timezone?: string;
 }): Promise<number> {
-  let stagedEntries = 0;
+  const before = await readShortTermRecallEntries({
+    workspaceDir: params.workspaceDir,
+    nowMs: params.nowMs,
+  });
   for (const day of params.days) {
     const results = await appendSessionCorpusLines({
       workspaceDir: params.workspaceDir,
@@ -339,7 +345,7 @@ async function applySessionBackfillDays(params: {
     if (grounded.length === 0) {
       continue;
     }
-    stagedEntries += await recordShortTermRecalls({
+    await recordShortTermRecalls({
       workspaceDir: params.workspaceDir,
       query: `${SESSION_BACKFILL_QUERY_PREFIX}:${day.day}`,
       signalType: "grounded",
@@ -359,7 +365,11 @@ async function applySessionBackfillDays(params: {
       ...(params.timezone !== undefined ? { timezone: params.timezone } : {}),
     });
   }
-  return Math.max(0, stagedEntries);
+  const after = await readShortTermRecallEntries({
+    workspaceDir: params.workspaceDir,
+    nowMs: params.nowMs,
+  });
+  return Math.max(0, after.length - before.length);
 }
 
 export async function executeSessionBackfillBatch(
@@ -385,7 +395,7 @@ async function executeSessionBackfillBatchCore(
   params: RunSessionBackfillParams,
 ): Promise<SessionBackfillExecution> {
   const workspaceDir = params.workspaceDir;
-  const nowMs = params.nowMs ?? Date.now();
+  const nowMs = Number.isFinite(params.nowMs) ? (params.nowMs as number) : Date.now();
   if (params.rollback) {
     // Backfill diary markers and grounded-only candidates are a shared artifact
     // class with rem-backfill; the stable removal APIs intentionally clear both.
@@ -501,7 +511,7 @@ async function executeSessionBackfillBatchCore(
         ...(params.timezone !== undefined ? { timezone: params.timezone } : {}),
       });
     }
-    const nextSeenMessages = state.seenMessages;
+    const nextSeenMessages = { ...state.seenMessages };
     for (const { candidates } of selectedDays) {
       const hashesByScope = new Map<string, string[]>();
       for (const candidate of candidates) {
@@ -513,13 +523,15 @@ async function executeSessionBackfillBatchCore(
         nextSeenMessages[scope] = mergeTrackedMessageHashes(nextSeenMessages[scope] ?? [], hashes);
       }
     }
-    state.files = mergeSessionBackfillFileProgress({
-      current: state.files,
-      scans: collected.scans,
-      selectedHashes,
+    await writeSessionIngestionState(workspaceDir, {
+      ...state,
+      files: mergeSessionBackfillFileProgress({
+        current: state.files,
+        scans: collected.scans,
+        selectedHashes,
+      }),
+      seenMessages: trimTrackedSessionScopes(nextSeenMessages),
     });
-    state.seenMessages = trimTrackedSessionScopes(nextSeenMessages);
-    await writeSessionIngestionState(workspaceDir, state);
   }
 
   return {

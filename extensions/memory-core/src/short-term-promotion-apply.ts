@@ -15,13 +15,12 @@ import {
   appendConsolidationSummary,
   readMemoryPreimages,
   storeMemoryPreimage,
-  type MemoryConsolidationResult,
 } from "./dreaming-consolidation-artifacts.js";
 import {
   isConsolidationCandidateEligible,
   isPromotionOriginBlocked,
 } from "./dreaming-consolidation-candidates.js";
-import { consolidateMemory } from "./dreaming-consolidation.js";
+import { applyMemoryConsolidationPlan, consolidateMemory } from "./dreaming-consolidation.js";
 import { buildBudgetedMemoryAppend } from "./memory-budget-append.js";
 import { DEFAULT_MEMORY_FILE_MAX_CHARS } from "./memory-budget.js";
 import { pruneMemoryEntryOrigins, reserveMemoryEntryOrigins } from "./memory-entry-origins.js";
@@ -362,11 +361,10 @@ export async function applyShortTermPromotions(
             ? { maxPromotedSnippetTokens: options.maxPromotedSnippetTokens }
             : {}),
           nowMs,
-          timezone: options.timezone,
           logger: options.consolidation.logger,
         })
       : null;
-  let consolidationResult: MemoryConsolidationResult | null = null;
+  let consolidationResult: Awaited<ReturnType<typeof applyMemoryConsolidationPlan>> = null;
   let committedCandidates: PromotionCandidate[] = [];
   let committedMemoryContent: string | undefined;
   let appendedCandidates = 0;
@@ -427,7 +425,14 @@ export async function applyShortTermPromotions(
         if (hashMemoryContent(existingMemory) !== consolidationBaseMemoryHash) {
           rewriteSkippedReason = "MEMORY.md changed while consolidation was running";
         } else {
-          consolidationResult = consolidationPlan.result;
+          consolidationResult = applyMemoryConsolidationPlan({
+            existingMemory,
+            plan: consolidationPlan,
+            nowMs,
+            ...(options.timezone ? { timezone: options.timezone } : {}),
+            memoryFileMaxChars: budgetChars,
+            maxPriorEntryLossFraction,
+          });
         }
       }
       if (consolidationResult) {

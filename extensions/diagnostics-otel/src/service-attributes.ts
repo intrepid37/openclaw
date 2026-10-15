@@ -160,8 +160,12 @@ export function securitySeverityText(
       return "ERROR";
     case "medium":
       return "WARN";
+    case "info":
+    case "low":
+      return "INFO";
   }
-  return "INFO";
+  const unreachable: never = severity;
+  return unreachable;
 }
 
 export function assignOtelSecurityAttributes(

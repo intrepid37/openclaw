@@ -72,7 +72,7 @@ export async function runEmbeddingOperationWithTimeout<T>(params: {
   const signal = params.signal
     ? AbortSignal.any([params.signal, controller.signal])
     : controller.signal;
-  if (params.timeoutMs <= 0) {
+  if (!Number.isFinite(params.timeoutMs) || params.timeoutMs <= 0) {
     return await params.run(signal);
   }
   const timeoutMs = resolveTimerTimeoutMs(params.timeoutMs, 1);

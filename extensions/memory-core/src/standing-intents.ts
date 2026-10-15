@@ -41,6 +41,7 @@ async function executeStandingIntent<Key extends keyof StandingIntentOperations>
 ): Promise<StandingIntentOperations[Key]["output"]> {
   const assertCurrent = params.assertCurrent;
   assertCurrent?.();
+  const capturedCommand = structuredClone(command);
   const worker = await openOpenClawAgentSqliteWorkerStoreV2<StandingIntentWorkerOperations>(
     options,
     { version: 2, assertCurrent: () => assertCurrent?.() },
@@ -51,10 +52,10 @@ async function executeStandingIntent<Key extends keyof StandingIntentOperations>
   );
   try {
     await worker.prepare();
-    let result = await worker.execute(command, () => assertCurrent?.());
+    let result = await worker.execute(capturedCommand, () => assertCurrent?.());
     if (result.kind === "schema-prepared") {
       // Only confirmed schema-only completion permits the separate business dispatch.
-      result = await worker.execute(command, () => assertCurrent?.());
+      result = await worker.execute(capturedCommand, () => assertCurrent?.());
     }
     if (result.kind === "schema-prepared") {
       throw new Error("Standing-intent schema changed before its business operation");

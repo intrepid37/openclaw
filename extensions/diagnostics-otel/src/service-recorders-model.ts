@@ -126,14 +126,14 @@ export function createModelRecorders(runtime: DiagnosticsRecorderRuntime) {
       assignModelCallPromptStatsAttrs(spanAttrs, evt);
       assignModelCallUsageAttrs(spanAttrs, evt);
       assignOtelModelContentAttributes(spanAttrs, modelContent, runtime.captureContent);
-      const trackedSpan = runtime.takeTrackedTrustedSpan(evt, metadata);
-      const span = trackedSpan
-        ? runtime.setSpanAttrs(trackedSpan, spanAttrs)
-        : runtime.spanWithDuration(modelCallSpanName(evt), spanAttrs, evt.durationMs, {
-            kind: SpanKind.CLIENT,
-            parentContext: runtime.activeTrustedParentContext(evt, metadata),
-            endTimeMs: evt.ts,
-          });
+      const span =
+        runtime.takeTrackedTrustedSpan(evt, metadata) ??
+        runtime.spanWithDuration(modelCallSpanName(evt), spanAttrs, evt.durationMs, {
+          kind: SpanKind.CLIENT,
+          parentContext: runtime.activeTrustedParentContext(evt, metadata),
+          endTimeMs: evt.ts,
+        });
+      runtime.setSpanAttrs(span, spanAttrs);
       addUpstreamRequestIdSpanEvent(span, evt.upstreamRequestIdHash);
       if (evt.type === "model.call.error") {
         span.setStatus({

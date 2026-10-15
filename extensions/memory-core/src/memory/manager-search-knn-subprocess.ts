@@ -10,8 +10,12 @@ import {
   resolveRuntimeWorkerUrl,
 } from "openclaw/plugin-sdk/process-runtime";
 import { vectorKnnProcessEntrypoint } from "./manager-search-knn-entrypoint.js";
-import type { VectorKnnChildInput, VectorKnnChildResult } from "./manager-search-knn.child.js";
-import type { VectorKnnRequest, VectorKnnResponse } from "./manager-search-knn.js";
+import type { VectorKnnChildInput } from "./manager-search-knn.child.js";
+import {
+  isVectorKnnRow,
+  type VectorKnnRequest,
+  type VectorKnnResponse,
+} from "./manager-search-knn.js";
 
 const MAX_STDIN_BYTES = 1024 * 1024;
 const MAX_STDOUT_BYTES = 2 * 1024 * 1024;
@@ -71,8 +75,8 @@ function setChildReferenced(child: ChildProcessWithoutNullStreams, referenced: b
   }
 }
 
-function parseChildResult(output: Buffer): VectorKnnResponse {
-  let parsed: VectorKnnChildResult;
+function parseChildResult(output: Buffer, maxRows: number): VectorKnnResponse {
+  let parsed: unknown;
   try {
     parsed = JSON.parse(output.toString("utf8"));
   } catch {
@@ -81,10 +85,33 @@ function parseChildResult(output: Buffer): VectorKnnResponse {
       "protocol",
     );
   }
-  if (parsed.status === "failed") {
+  if (!parsed || typeof parsed !== "object" || !("status" in parsed)) {
+    throw new VectorKnnSubprocessError(
+      "memory vector KNN child returned an invalid envelope",
+      "protocol",
+    );
+  }
+  if (parsed.status === "failed" && "error" in parsed && typeof parsed.error === "string") {
     throw new VectorKnnSubprocessError(parsed.error || "memory vector KNN child failed", "failed");
   }
-  return parsed.value;
+  const value = "value" in parsed ? parsed.value : undefined;
+  if (
+    parsed.status !== "ok" ||
+    !value ||
+    typeof value !== "object" ||
+    !("rows" in value) ||
+    !Array.isArray(value.rows) ||
+    value.rows.length > maxRows ||
+    !value.rows.every(isVectorKnnRow) ||
+    !("fallbackScanRequired" in value) ||
+    typeof value.fallbackScanRequired !== "boolean"
+  ) {
+    throw new VectorKnnSubprocessError(
+      "memory vector KNN child returned an invalid result",
+      "protocol",
+    );
+  }
+  return { rows: value.rows, fallbackScanRequired: value.fallbackScanRequired };
 }
 
 type VectorKnnSubprocessParams = {
@@ -291,7 +318,7 @@ async function runAdmittedVectorKnn(params: VectorKnnSubprocessParams): Promise<
               "protocol",
             );
           }
-          const result = parseChildResult(Buffer.concat(chunks));
+          const result = parseChildResult(Buffer.concat(chunks), params.request.limit);
           if (terminationReason) {
             return;
           }

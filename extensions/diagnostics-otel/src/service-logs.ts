@@ -80,7 +80,7 @@ export function createDiagnosticsLogExporter(params: {
     );
     const logProcessor = new BatchLogRecordProcessor({
       exporter: logExporter,
-      ...(flushIntervalMs !== undefined
+      ...(typeof flushIntervalMs === "number"
         ? { scheduledDelayMillis: Math.max(1000, flushIntervalMs) }
         : {}),
     });

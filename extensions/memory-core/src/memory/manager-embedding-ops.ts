@@ -370,7 +370,7 @@ export abstract class MemoryManagerEmbeddingOps extends MemoryManagerEmbeddingCa
     const configuredTimeoutSeconds = this.settings.sync.embeddingBatchTimeoutSeconds;
     if (
       kind === "batch" &&
-      configuredTimeoutSeconds !== undefined &&
+      typeof configuredTimeoutSeconds === "number" &&
       configuredTimeoutSeconds > 0
     ) {
       return resolveTimerTimeoutMs(configuredTimeoutSeconds * 1000, MAX_TIMER_TIMEOUT_MS);
@@ -380,7 +380,7 @@ export abstract class MemoryManagerEmbeddingOps extends MemoryManagerEmbeddingCa
       kind === "query"
         ? providerRuntime?.inlineQueryTimeoutMs
         : providerRuntime?.inlineBatchTimeoutMs;
-    return runtimeTimeoutMs !== undefined && runtimeTimeoutMs > 0
+    return typeof runtimeTimeoutMs === "number" && runtimeTimeoutMs > 0
       ? resolveTimerTimeoutMs(runtimeTimeoutMs, defaults.remote)
       : defaults[provider?.id === "local" ? "local" : "remote"];
   }
@@ -560,13 +560,14 @@ export abstract class MemoryManagerEmbeddingOps extends MemoryManagerEmbeddingCa
         assertCurrent();
         return replacements.length > 0;
       };
-      const published = await database.replaceSource(
-        replacements.length > 1
-          ? replacements
-          : expectDefined(replacements[0], "memory source publication"),
-        assertCurrent,
-        prepare,
-      );
+      const published =
+        replacements.length > 1 && memoryPublicationGroup(replacements)
+          ? await database.replaceSource(replacements, assertCurrent, prepare)
+          : await database.replaceSource(
+              expectDefined(replacements[0], "memory source publication"),
+              assertCurrent,
+              prepare,
+            );
       if (!published) {
         return;
       }
@@ -676,7 +677,7 @@ export abstract class MemoryManagerEmbeddingOps extends MemoryManagerEmbeddingCa
       };
     };
     const preparedEntry =
-      source === "sessions" && kind !== "multimodal" && suppliedContent !== undefined
+      source === "sessions" && kind !== "multimodal" && typeof suppliedContent === "string"
         ? await withMemoryWorkspacePreparation(this.workspaceDir, prepare)
         : await withMemoryWorkspaceLock(this.workspaceDir, prepare);
     if (!preparedEntry || !retain) {

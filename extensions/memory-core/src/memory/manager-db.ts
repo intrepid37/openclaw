@@ -192,9 +192,7 @@ export async function cleanupAgedMemoryReindexTempFiles(dbPath: string): Promise
     for (const filePath of filePaths) {
       try {
         await fs.rm(filePath, { force: true });
-      } catch {
-        // Old, unreferenced reindex shadows can be retried by the next sweep.
-      }
+      } catch {}
     }
   }
 }
@@ -216,9 +214,7 @@ export function openMemoryDatabaseAtPath(
     try {
       closeMemorySqliteWalMaintenance(db);
       db.close();
-    } catch {
-      // Configuration already failed; preserve that error instead of cleanup noise.
-    }
+    } catch {}
     throw err;
   }
 }

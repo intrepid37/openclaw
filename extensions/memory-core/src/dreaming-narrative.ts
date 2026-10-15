@@ -200,7 +200,8 @@ export type PreparedDreamNarrative = Pick<DreamNarrativeRequest, "data" | "model
 async function generateAndAppendDreamNarrative(
   params: DreamNarrativeRequest,
 ): Promise<DreamNarrativeOutcome> {
-  const nowMs = params.nowMs ?? Date.now();
+  const nowMs =
+    typeof params.nowMs === "number" && Number.isFinite(params.nowMs) ? params.nowMs : Date.now();
   const message = buildNarrativePrompt(params.data);
   try {
     const attemptModels = params.model ? [params.model, undefined] : [undefined];
@@ -293,7 +294,8 @@ export async function runDreamNarrative(
     : async () => {
         await appendFallbackNarrativeEntry({
           ...rest,
-          nowMs: rest.nowMs ?? Date.now(),
+          nowMs:
+            typeof rest.nowMs === "number" && Number.isFinite(rest.nowMs) ? rest.nowMs : Date.now(),
           reason: "the dreaming sweep has no owning agent id",
         });
         return { status: "completed" as const };

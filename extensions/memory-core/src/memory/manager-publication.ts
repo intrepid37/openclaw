@@ -174,13 +174,12 @@ export async function publishMemorySource(params: {
 
 /** Cache entries are content-addressed; the worker excludes forgotten sessions. */
 export async function publishMemoryEmbeddingCache(params: {
-  execute: PublicationScope["execute"];
-  run: <T>(operation: (scope: PublicationScope) => Promise<T>) => Promise<T>;
+  scope: PublicationScope;
   mutation: MemoryEmbeddingCacheMutation;
   prepare: () => boolean;
   retry: PublicationRetry;
 }): Promise<boolean | undefined> {
-  const { execute, run, mutation, prepare, retry } = params;
+  const { scope, mutation, prepare, retry } = params;
   if (!prepare()) {
     return undefined;
   }
@@ -188,7 +187,7 @@ export async function publishMemoryEmbeddingCache(params: {
   if (mutation.kind === "clear") {
     return await retry(
       () =>
-        execute({
+        scope.execute({
           type: "cache.clear",
           input: { identities: mutation.identities },
         }),
@@ -198,28 +197,26 @@ export async function publishMemoryEmbeddingCache(params: {
   if (memoryEmbeddingCacheFitsInline(mutation.header, mutation.entries)) {
     return await retry(
       () =>
-        execute({
+        scope.execute({
           type: "cache.write.inline",
           input: { header: mutation.header, entries: mutation.entries },
         }),
       prepareRetry,
     );
   }
-  return run(async (scope) => {
-    await scope.execute({
-      type: "cache.stage.start",
-      input: { header: mutation.header },
-    });
-    for (const fragments of memoryEmbeddingCacheBatches(mutation.entries)) {
-      await scope.execute({ type: "stage.append", input: { fragments } });
-    }
-    const current = await retry(
-      () => scope.execute({ type: "cache.write", input: undefined }),
-      prepareRetry,
-    );
-    if (current === undefined) {
-      await scope.execute({ type: "stage.discard", input: undefined });
-    }
-    return current;
+  await scope.execute({
+    type: "cache.stage.start",
+    input: { header: mutation.header },
   });
+  for (const fragments of memoryEmbeddingCacheBatches(mutation.entries)) {
+    await scope.execute({ type: "stage.append", input: { fragments } });
+  }
+  const current = await retry(
+    () => scope.execute({ type: "cache.write", input: undefined }),
+    prepareRetry,
+  );
+  if (current === undefined) {
+    await scope.execute({ type: "stage.discard", input: undefined });
+  }
+  return current;
 }
