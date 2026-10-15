@@ -522,7 +522,8 @@ describe("createReplyRestartRecoveryClaimController", () => {
             message: "session changed before durable user-turn admission",
           });
         } else {
-          expect(isAgentRunStaleLifecycleError(failure)).toBe(true);
+          // The reader owns its refusal; admission no longer replaces its error after a failed read.
+          expect(failure).toBeInstanceOf(Error);
         }
         expect(setEntry).not.toHaveBeenCalled();
         expect(loadSessionEntry(scope)).toEqual(before);

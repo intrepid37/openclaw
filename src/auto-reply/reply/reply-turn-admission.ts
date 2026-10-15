@@ -143,7 +143,8 @@ export async function admitReplyTurn(
   let sessionId =
     activeAtAdmission?.result &&
     !isReplyOperationAbortedForRestart(activeAtAdmission) &&
-    activeAtAdmission.captureOwnedSessionIds().has(params.sessionId)
+    ((!params.storePath && !params.expectedSessionId) ||
+      activeAtAdmission.captureOwnedSessionIds().has(params.expectedSessionId ?? params.sessionId))
       ? activeAtAdmission.sessionId
       : params.sessionId;
   const resolveGatewayContext = params.adoptOperation
@@ -309,16 +310,23 @@ export async function admitReplyTurn(
                     `Session "${params.sessionKey}" was deleted while starting work. Retry.`,
                   );
                 }
-                const activeOperationRotatedExpectedSession = [...predecessors].some(
-                  (previous) =>
+                // Follow only predecessors this request observed, in capture order.
+                let predecessorSessionId = expectedSessionId;
+                for (const previous of predecessors) {
+                  if (
+                    predecessorSessionId !== undefined &&
                     previous.key === params.sessionKey &&
                     !isReplyOperationAbortedForRestart(previous) &&
-                    expectedSessionId !== undefined &&
-                    previous.captureOwnedSessionIds().has(expectedSessionId) &&
-                    previous.sessionId === currentEntry?.sessionId &&
+                    previous.captureOwnedSessionIds().has(predecessorSessionId) &&
                     lifecycleAdmissionByOperation.get(previous)?.databaseIdentity ===
-                      admittedDatabaseClaim?.identity,
-                );
+                      admittedDatabaseClaim?.identity
+                  ) {
+                    predecessorSessionId = previous.sessionId;
+                  }
+                }
+                const activeOperationRotatedExpectedSession =
+                  expectedSessionId !== undefined &&
+                  predecessorSessionId === currentEntry?.sessionId;
                 if (
                   expectedSessionId &&
                   currentEntry?.sessionId !== expectedSessionId &&
@@ -686,10 +694,14 @@ export async function admitReplyTurn(
           };
         }
         if (!params.storePath && activeOperation?.result?.kind === "completed") {
-          if (!activeOperation.captureOwnedSessionIds().has(sessionId)) {
+          if (
+            expectedSessionId &&
+            !activeOperation.captureOwnedSessionIds().has(expectedSessionId)
+          ) {
             rejectSessionChange();
           }
           sessionId = activeOperation.sessionId;
+          expectedSessionId = expectedSessionId ? sessionId : undefined;
         }
       }
     }
