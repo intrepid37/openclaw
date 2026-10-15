@@ -313,13 +313,12 @@ it("keeps descendant-only native overlap leased through closing and releases aft
   expect(bounds.left).toBeGreaterThan(surface().getBoundingClientRect().right);
   await expect.poll(() => states).toEqual([false, true]);
   const branch = [surface(), child];
-  // Hold finite closing work independently of whether the browser creates a CSS transition.
   // Hold the parent too: its exit moves the submenu anchor before hiding it.
-  const closing = branch.map((menu) => {
-    const animation = menu.animate({ opacity: [1, 0], scale: ["1", "0.9"] }, { duration: 60_000 });
+  branch.forEach((menu) => {
+    const animation = menu.animate({ opacity: [1, 0], scale: [1, 0.9] }, { duration: 1000 });
     animation.pause();
+    animation.currentTime = 0;
     cleanups.push(() => animation.cancel());
-    return animation;
   });
   const hidden = new Promise<void>((resolve) => {
     child.addEventListener("overlay-after-hide", () => resolve(), { once: true });
@@ -331,6 +330,15 @@ it("keeps descendant-only native overlap leased through closing and releases aft
     }
   });
   expect(view.handle.close()).toBe(true);
+  const closing = branch.flatMap((menu) => {
+    const animations = menu.getAnimations();
+    expect(animations.length).toBeGreaterThan(0);
+    return animations;
+  });
+  for (const animation of closing) {
+    animation.pause();
+    cleanups.push(() => animation.cancel());
+  }
   await new Promise<void>((resolve) => {
     requestAnimationFrame(() => resolve());
   });
