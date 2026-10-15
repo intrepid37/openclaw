@@ -366,6 +366,7 @@ export function readShellView(host: ShellViewHost) {
     custodianPanelAvailable,
     activeRoute,
     sessionRoute,
+    workbenchRoute: !host.routeState.routeFailed && isSessionRouteId(host.routeState.routeId),
     reloadRequired,
     pageActionsBlocked,
     nativeEmbed,

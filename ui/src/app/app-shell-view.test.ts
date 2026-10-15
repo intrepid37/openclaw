@@ -35,6 +35,25 @@ async function mountShell() {
   return { owner, runtime, view };
 }
 
+it("reserves session geometry before page mount and clears it on other routes", async () => {
+  const { owner, view } = await mountShell();
+  const content = view.container.querySelector("main.content")!;
+  expect(content.classList.contains("content--workbench")).toBe(true);
+  expect(content.querySelector("openclaw-chat-pane")).toBeNull();
+  for (const routeId of ["new-session", "systems", "dashboard", "connection", undefined, "chat"]) {
+    owner.routeState = { routeId, routeFailed: routeId === undefined };
+    owner.invalidate();
+    flush();
+    expect(content.classList.contains("content--workbench"), String(routeId)).toBe(
+      routeId === "chat" || routeId === "dashboard",
+    );
+  }
+  owner.routeState = { routeId: "chat", routeFailed: true };
+  owner.invalidate();
+  flush();
+  expect(content.classList.contains("content--workbench")).toBe(false);
+});
+
 it("keeps one sidebar and outlet while navigation moves between desktop and drawer", async () => {
   let mobile = false;
   vi.stubGlobal(
