@@ -198,7 +198,7 @@ describe("broadcast serialization failures", () => {
         },
       };
       await appendTranscriptMessage(scope, { eventId: "steer", now: 1, message });
-      const peers = [owner, viewer].map((profile) => {
+      const makeControlUiPeer = (profile: typeof owner) => {
         const peer = makeClient(profile.id);
         peer.client.connect.client = {
           id: GATEWAY_CLIENT_IDS.CONTROL_UI,
@@ -210,10 +210,14 @@ describe("broadcast serialization failures", () => {
           profileId: profile.id,
           displayName: profile.displayName,
           hasAvatar: false,
+          avatarRevision: "1",
           updatedAt: profile.updatedAt,
         };
         return peer;
-      });
+      };
+      const ownerPeer = makeControlUiPeer(owner);
+      const viewerPeer = makeControlUiPeer(viewer);
+      const peers = [ownerPeer, viewerPeer];
       const connection = createGatewayConnectionState({
         scheduler: createTestGatewayScheduler(),
         bootId: "steering-live-revocation",
@@ -283,7 +287,7 @@ describe("broadcast serialization failures", () => {
           readSpy.mockRestore();
         }
       }
-      const ownerFrames = peers[0].socket.send.mock.calls.map(([frame]) =>
+      const ownerFrames = ownerPeer.socket.send.mock.calls.map(([frame]) =>
         JSON.parse(String(frame)),
       );
       expect(ownerFrames).toEqual(
@@ -299,7 +303,7 @@ describe("broadcast serialization failures", () => {
           }),
         ]),
       );
-      expect(peers[1].socket.send).not.toHaveBeenCalled();
+      expect(viewerPeer.socket.send).not.toHaveBeenCalled();
     });
   });
 
