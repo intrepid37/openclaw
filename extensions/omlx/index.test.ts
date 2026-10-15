@@ -114,7 +114,7 @@ describe("oMLX registered embedding provider", () => {
   it.each([
     {
       name: "request headers",
-      request: { headers: { authorization: "Bearer ${OMLX_EMBED_TEST_KEY}" } },
+      request: { headers: { authorization: "Bearer fixture-omlx-key" } },
       authorization: "Bearer fixture-omlx-key",
       customKey: null,
     },
