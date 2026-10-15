@@ -250,6 +250,7 @@ export default definePluginEntry({
               agentId: run.agentId,
               runId: event.runId,
               durationMs: event.ts - run.startedAt,
+              aborted: event.data.aborted === true,
             });
           }
         }
