@@ -255,12 +255,23 @@ target, compilation mode, or native dependency set requires new evidence.
 ### Sandboxed Doctor on macOS
 
 SQLite snapshot workers use an authenticated local broker at
-`<TMPDIR>/oc-br-*/resource.sock`. This is Unix-domain IPC, including in the loose
-runtime; it does not contact a network service. A sandbox's `(deny network*)`
-also denies binding and connecting to this socket. Permit `network-bind` for
-local Unix sockets and `network-outbound` for remote Unix sockets, only within
-the isolated temporary root. Keep IP networking, the
-operator's home, Keychain, launchctl, and host SQLite libraries denied.
+`<TMPDIR>/oc-br-*/resource.sock`. The shared snapshot owner uses this broker to
+retain native cleanup custody independently of the staging worker. Loose and
+standalone runtimes take the same path; embedded worker substitution does not
+introduce this socket. A sandbox's `(deny network*)` also denies Unix-domain IPC,
+even when file writes at the socket's path are allowed.
+
+After the network denial, allow only bind and connect within the isolated root:
+
+```scheme
+(allow network-bind
+  (local unix-socket (subpath (param "ISOLATED_ROOT"))))
+(allow network-outbound
+  (remote unix-socket (subpath (param "ISOLATED_ROOT"))))
+```
+
+Keep IP networking, the operator's home, Keychain, launchctl, and host SQLite
+libraries denied. Neither operation contacts an IP network service.
 
 Use a short, canonical temporary root: Darwin limits Unix socket paths to 103
 bytes. The broker's fallback for longer paths is outside the isolated root and
