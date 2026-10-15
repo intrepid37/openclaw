@@ -46,28 +46,3 @@ export function copyArrayEntries(value: unknown): unknown[] {
   }
   return entries;
 }
-
-/** Copy record entries whose values are also record-shaped. */
-export function copyRecordEntries<T>(value: unknown): Array<[string, T]> {
-  if (!isRecordWithoutThrowing(value)) {
-    return [];
-  }
-
-  let keys: string[];
-  try {
-    keys = Object.keys(value);
-  } catch {
-    return [];
-  }
-
-  const entries: Array<[string, T]> = [];
-  for (const key of keys) {
-    const entry = readRecordValue(value, key);
-    // Callers use this for nested config maps; non-object leaves are ignored so
-    // later code does not need repeated record guards.
-    if (isRecordWithoutThrowing(entry)) {
-      entries.push([key, entry as T]);
-    }
-  }
-  return entries;
-}
