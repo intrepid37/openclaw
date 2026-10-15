@@ -36,8 +36,7 @@ describe.runIf("__vitest_browser__" in globalThis)("sidebar agent menu scrolling
       const list = row.parentElement!.getBoundingClientRect();
       return bounds.top >= list.top - 1 && bounds.bottom <= list.bottom + 1;
     };
-    // The selected row is scrolled after the opening animation, later than initial focus.
-    const nextMenuShown = () =>
+    const menuShown = () =>
       new Promise<void>((resolve) => {
         const onShown = (event: Event) => {
           if (event.target !== sidebar.querySelector(".sidebar-agent-menu")) {
@@ -50,11 +49,12 @@ describe.runIf("__vitest_browser__" in globalThis)("sidebar agent menu scrolling
         onTestFinished(() => sidebar.removeEventListener("overlay-after-show", onShown, true));
       });
 
-    const clickMenuShown = nextMenuShown();
+    const clickedMenuShown = menuShown();
     trigger.click();
-    await clickMenuShown;
     await expect.poll(() => activeRow()?.dataset.value).toBe("agent:agent-39");
     await expect.poll(() => document.activeElement).toBe(activeRow());
+    // Focus settles before the opening animation and selected-row reveal.
+    await clickedMenuShown;
     await expect.poll(selectedAgentIsVisible).toBe(true);
     await userEvent.keyboard("{Escape}");
     await expect.poll(() => sidebar.querySelector(".sidebar-agent-menu")).toBeNull();
@@ -62,10 +62,10 @@ describe.runIf("__vitest_browser__" in globalThis)("sidebar agent menu scrolling
     const input = document.createElement("input");
     document.body.append(input);
     input.focus();
-    const hoverMenuShown = nextMenuShown();
+    const hoveredMenuShown = menuShown();
     await page.elementLocator(trigger).hover();
-    await hoverMenuShown;
     await expect.poll(() => activeRow()?.dataset.value).toBe("agent:agent-39");
+    await hoveredMenuShown;
     await expect.poll(selectedAgentIsVisible).toBe(true);
     expect(document.activeElement).toBe(input);
   });
