@@ -242,7 +242,8 @@ test("drain abandons a stalled attempt at the budget deadline", async (t) => {
           status: 429,
         });
       }
-      // The second attempt stalls until the drain abandons it.
+      // The second attempt stalls until the drain abandons it. With 1 ms left, the drain may
+      // abort before the proxy forwards it, so only the drain's own outcome is asserted.
       return await new Promise((_resolve, reject) => {
         init.signal.addEventListener("abort", () => reject(init.signal.reason), { once: true });
       });
@@ -258,7 +259,6 @@ test("drain abandons a stalled attempt at the budget deadline", async (t) => {
     proxy.drainUpdates("123:ABC"),
     /after 2 attempt\(s\); last result no HTTP response \(TIMEOUT\) within the 120s retry budget/u,
   );
-  assert.equal(upstreamRequests, 2);
   assert.deepEqual(JSON.parse(diagnostic.mock.calls.at(-1).arguments[0]), {
     event: "telegram_test_api_drain_failure",
     attempt: 2,
