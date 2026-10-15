@@ -192,8 +192,10 @@ scripts/lib/numeric-options.mjs
 scripts/lib/official-external-channel-catalog.json
 scripts/lib/official-external-plugin-catalog.json
 scripts/lib/official-external-provider-catalog.json
+scripts/lib/openclaw-bun.json
 scripts/lib/package-dist-inventory-contract.mts
 scripts/lib/package-lifecycle-marker.mjs
+scripts/lib/pinned-bun.mts
 scripts/lib/plain-gh.mjs
 scripts/lib/plain-gh.sh
 scripts/lib/record-shared.mjs
@@ -231,6 +233,7 @@ scripts/lib/windows-taskkill.mjs
 scripts/pnpm-runner.mts
 scripts/pr-crabbox-gate-publisher.mjs
 scripts/run-vitest.mts
+scripts/stage-openclaw-bun.sh
 scripts/test-projects.test-support.mts
 scripts/tsx.mjs
 scripts/verify-pr-hosted-gates.mjs
@@ -356,6 +359,7 @@ src/agents/sandbox/registry-publication.ts
 src/config/zod-schema.database.ts
 src/infra/database-engine/adapters.ts
 src/infra/database-engine/admission-scope.ts
+src/infra/database-engine/context.ts
 src/infra/database-engine/json-values.ts
 src/infra/database-engine/observation.ts
 src/infra/database-engine/open.ts
@@ -845,6 +849,7 @@ src/infra/agent-run-approval-leases.ts
 src/infra/agent-run-projection.ts
 src/infra/agent-run-registry-state.ts
 src/infra/agent-run-registry.ts
+src/infra/agent-run-terminal-writes.ts
 src/infra/agent-run-usage.ts
 src/infra/approval-resolution-ref.ts
 src/infra/backoff.ts
@@ -886,6 +891,7 @@ src/infra/diagnostic-trace-context.ts
 src/infra/diagnostic-trace-propagation.ts
 src/infra/diagnostics-timeline.ts
 src/infra/directory-durability.ts
+src/infra/directory-watch-host.ts
 src/infra/disk-space.ts
 src/infra/dispatch-wrapper-resolution.ts
 src/infra/device-identity-process-cache.ts
@@ -1263,7 +1269,11 @@ src/logger.ts
 src/interactive/payload.ts
 src/logging/config.ts
 src/logging/console.ts
+src/logging/diagnostic-cpu-profile.ts
+src/logging/diagnostic-heap-profile.ts
+src/logging/diagnostic-profile.ts
 src/logging/diagnostic-support-redaction.ts
+src/logging/diagnostic-worker-gc-profile.ts
 src/logging/env-log-level.ts
 src/logging/json-console-line.ts
 src/logging/levels.ts
@@ -1527,6 +1537,7 @@ src/plugins/plugin-registry-id-normalizer.ts
 src/plugins/plugin-registry-snapshot.ts
 src/plugins/plugin-registry.ts
 src/plugins/plugin-return-value.ts
+src/plugins/plugin-tool-execution.ts
 src/plugins/plugin-runtime-artifact-identity.ts
 src/plugins/plugin-runtime-artifact-resolution.ts
 src/plugins/plugin-runtime-artifact-selection.ts
@@ -1913,6 +1924,7 @@ src/state/openclaw-state-lease-worker.ts
 src/state/openclaw-state-lease.ts
 src/state/openclaw-state-maintenance-context.ts
 src/state/openclaw-state-ownership.ts
+src/state/openclaw-state-ownership-preflight.ts
 src/state/openclaw-state-ownership-worker.ts
 src/state/openclaw-state-read-operation.ts
 src/state/openclaw-state-read-pool.ts

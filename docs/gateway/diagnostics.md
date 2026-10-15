@@ -737,6 +737,40 @@ flush after 256 pending samples or on orderly worker shutdown. Individual collec
 are preserved; worker histogram updates can lag by one sampling interval.
 Workers without that port are not covered; a missing series does not mean zero GC.
 
+Node Code Mode also warns when an isolate exceeds 600 major collections per minute
+across an observation window of at least 10 seconds, at most once per worker per
+minute. `Code Mode worker GC storm` records the reusable metric `workerSlot`, native
+`workerThreadId`, pool `workerId`, current Code Mode `runId`, a 16-character SHA-256
+`sessionKeyHash`, lifetime `cellCount`, `activeCellCount`, and distinct pending
+`bridgeMethods`. Parked cells retain attribution; completed cells clear it. Idle
+warnings have no current run. Slots above the 64-worker metric bound are omitted.
+The record includes the window count and duration plus isolate-local `heapUsed`,
+`heapTotal`, `external`, `arrayBuffers`, and `heapSizeLimitBytes`. ArrayBuffers are
+included in external memory. These warnings use the existing memory port and do
+not require an exporter; they contain no guest source, arguments, or results.
+Attribution describes the cell active when the observer delivers the batch, not
+proof that the cell caused every collection in the window. Node's observer cannot
+report while synchronous guest execution blocks its event loop.
+
+The first storm starts a five-second allocation and CPU capture in the affected
+worker, at most once per worker per hour (failed attempts also consume the hour).
+Heap sampling uses a 256 KiB interval and includes objects collected by both major
+and minor GC, so short-lived allocation churn remains visible. CPU sampling uses
+a 10 ms interval over the same window. No profiler or capture timer runs before
+a storm. Active tracing, debugging, or profiling can make capture unavailable.
+
+The Gateway writes sanitized results to `<state>/diagnostics/code-mode-gc-*`
+as `.heapprofile.json` and `.cpuprofile.json`. The completion warning lists
+`profileFiles`; failures report `captureStatus: "unavailable"` and a fixed
+`captureReason`. Files contain sampled stacks, counters, and timing, not guest
+source, arguments, results, or heap objects. Unknown/guest frame names and URLs
+are redacted using the profiling RPC policy. Each result is bounded to 1 MiB;
+the Gateway retains at most 20 storm profile files globally, with owner-only
+permissions. Other diagnostic artifacts are untouched. These files are not
+automatically included in support exports. The existing profiling RPCs still
+target the main isolate. Capture duration can exceed five seconds if synchronous
+guest work blocks the worker's event loop; retiring the worker can interrupt capture.
+
 ## RPC response size and heap changes
 
 The [Prometheus exporter](/gateway/prometheus) records

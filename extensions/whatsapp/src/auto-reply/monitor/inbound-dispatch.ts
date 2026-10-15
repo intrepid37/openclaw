@@ -19,10 +19,7 @@ import { createDeferred } from "openclaw/plugin-sdk/extension-shared";
 import { buildInboundHistoryFromEntries } from "openclaw/plugin-sdk/reply-history";
 import type { FinalizedMsgContext, ReplyDispatchKind } from "openclaw/plugin-sdk/reply-runtime";
 import { isRecord, normalizeOptionalString } from "openclaw/plugin-sdk/string-coerce-runtime";
-import {
-  requireWhatsAppInboundAdmission,
-  resolveWhatsAppAdmissionChannelIngress,
-} from "../../inbound/admission.js";
+import { resolveWhatsAppAdmissionChannelIngress } from "../../inbound/admission.js";
 import type { AdmittedWebInboundMessage } from "../../inbound/types.js";
 import {
   type DeliverableWhatsAppOutboundPayload,
@@ -39,9 +36,13 @@ import { createWhatsAppReplyTransportContext } from "../deliver-reply.js";
 import { markWhatsAppVisibleDeliveryError } from "../util.js";
 import { formatGroupMembers } from "./group-members.js";
 import type { GroupHistoryEntry } from "./inbound-context.js";
+import type {
+  ChannelReplyOnModelSelected,
+  WhatsAppDispatchPipeline,
+  WhatsAppReplyPlan,
+} from "./inbound-dispatch.types.js";
 import type { updateLastRouteInBackground } from "./last-route.js";
 import {
-  createChannelMessageReplyPipeline,
   getAgentScopedMediaLocalRoots,
   jidToE164,
   logVerbose,
@@ -58,14 +59,6 @@ import {
   type ReplyPayload,
   type resolveAgentRoute,
 } from "./runtime-api.js";
-
-type ChannelReplyOnModelSelected = NonNullable<
-  ReturnType<typeof createChannelMessageReplyPipeline>["onModelSelected"]
->;
-
-type WhatsAppDispatchPipeline = {
-  responsePrefix?: string;
-} & Record<string, unknown>;
 
 type VisibleReplyTarget = {
   id?: string;
@@ -337,7 +330,7 @@ export async function prepareWhatsAppInboundContext(params: {
   suppressMessageReceivedHooks?: boolean;
   buildContext?: typeof buildChannelInboundEventContext;
 }) {
-  const admission = requireWhatsAppInboundAdmission(params.msg);
+  const admission = params.msg.admission;
   const conversationId = admission.conversation.id;
   const conversationKind = admission.conversation.kind;
   const eventId = params.msg.event.id ?? `${conversationId}:${newConnectionId()}`;
@@ -475,7 +468,7 @@ export function resolveWhatsAppDmRouteTarget(params: {
   senderE164?: string;
   normalizeE164: (value: string) => string | null;
 }): string | undefined {
-  const admission = requireWhatsAppInboundAdmission(params.msg);
+  const admission = params.msg.admission;
   const conversationId = admission.conversation.id;
   if (admission.conversation.kind === "group") {
     return undefined;
@@ -548,7 +541,7 @@ export function createWhatsAppReplyPlan(params: {
   turnAdoptionLifecycle?: NonNullable<
     NonNullable<ChannelInboundTurnPlan["replyOptions"]>["turnAdoptionLifecycle"]
   >;
-}) {
+}): WhatsAppReplyPlan {
   const conversationId = params.conversationId;
   const statusReactionController = params.statusReactionController ?? null;
   const textLimit = resolveTextChunkLimit(params.cfg, "whatsapp");
