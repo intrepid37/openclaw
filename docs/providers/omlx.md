@@ -47,6 +47,10 @@ authentication disabled, and choose a chat model. Alternatively, run
 `openclaw onboard` and choose **oMLX**. Guided setup detects the running local
 server and discovers models through `/v1/models`.
 
+The inference catalog does not report model types, so it can also list embedding
+models. Choose a chat model for conversations and configure the embedding model
+separately below.
+
 Chat model references use the `omlx/` prefix:
 
 ```bash
