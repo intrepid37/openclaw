@@ -169,6 +169,13 @@ describe("agent event handler", () => {
     });
   }
 
+  function claimOwnedRun(runId: string, context: Parameters<typeof claimAgentRunContext>[1]) {
+    return expectDefined(
+      claimAgentRunContext(runId, context, { exclusive: true, trackOwner: true }),
+      "run owner claim",
+    );
+  }
+
   it("projects successful widgets into live assistant snapshots without final text", async () => {
     const h = createHarness();
     h.registerNamed("widgets", {
@@ -271,14 +278,7 @@ describe("agent event handler", () => {
     const h = createHarness();
     const runId = "widget-owner-reuse";
     const claim = () =>
-      expectDefined(
-        claimAgentRunContext(
-          runId,
-          { sessionKey: "session-widgets", isControlUiVisible: false },
-          { exclusive: true, trackOwner: true },
-        ),
-        "widget run owner claim",
-      );
+      claimOwnedRun(runId, { sessionKey: "session-widgets", isControlUiVisible: false });
     const firstClaim = claim();
     let currentClaim = firstClaim;
     h.sessionMessageSubscribers.subscribe("conn-widgets", "session-widgets");
@@ -974,69 +974,61 @@ describe("agent event handler", () => {
     },
   );
 
-  it("keeps a media-only assistant event pending without an empty or raw delta", async () => {
+  it.each([
+    {
+      name: "media-only snapshot",
+      chunks: ["MEDIA:./attachment-catalog-tiny/demo.jpg"],
+      split: false,
+    },
+    {
+      name: "split MEDIA directive",
+      chunks: ["Prepared the batch.\n  M", "EDIA:./attachment-catalog-tiny/", "demo.jpg"],
+      split: true,
+    },
+  ])("withholds managed media from $name", async ({ chunks, split }) => {
     const h = createHarness({ now: 1_000 });
-    h.registerNamed("media-only");
-
-    await h.emit(
-      "run-media-only",
-      "assistant",
-      {
-        text: "MEDIA:./attachment-catalog-tiny/demo.jpg",
-        managedMediaUrls: ["./attachment-catalog-tiny/demo.jpg"],
-      },
-      { seq: 1 },
-    );
-    expect(h.chat()).toHaveLength(0);
-
-    await h.end("run-media-only", 2);
-    const payloads = h.chat().map(([, payload]) => payload) as Array<{
-      state?: string;
-      message?: unknown;
-    }>;
-    expect(payloads).toEqual([expect.objectContaining({ state: "final", message: undefined })]);
-    expect(JSON.stringify(payloads)).not.toContain("MEDIA:");
-    h.nowSpy?.mockRestore();
-  });
-
-  it("withholds split MEDIA prefixes before a relative directive is complete", async () => {
-    const h = createHarness({ now: 1_000 });
-    h.registerNamed("split-media");
-
-    for (const [index, delta] of [
-      "Prepared the batch.\n  M",
-      "EDIA:./attachment-catalog-tiny/",
-      "demo.jpg",
-    ].entries()) {
+    h.registerNamed("managed-media");
+    for (const [index, chunk] of chunks.entries()) {
       await h.emit(
-        "run-split-media",
+        "run-managed-media",
         "assistant",
         {
-          delta,
-          ...(index === 2 ? { managedMediaUrls: ["./attachment-catalog-tiny/demo.jpg"] } : {}),
+          ...(split ? { delta: chunk } : { text: chunk }),
+          ...(index === chunks.length - 1
+            ? { managedMediaUrls: ["./attachment-catalog-tiny/demo.jpg"] }
+            : {}),
         },
         { seq: index + 1 },
       );
     }
-    await h.end("run-split-media", 4);
-
+    if (!split) {
+      expect(h.chat()).toHaveLength(0);
+    }
+    await h.end("run-managed-media", chunks.length + 1);
     const payloads = h.chat().map(([, payload]) => payload) as Array<{
+      state?: string;
       message?: { content?: Array<{ text?: string }> };
     }>;
-    expect(payloads.length).toBeGreaterThan(0);
-    for (const payload of payloads) {
-      const text = payload.message?.content?.[0]?.text ?? "";
-      expect(text).not.toMatch(/(?:^|\n)\s*(?:M|ME|MED|MEDI|MEDIA:)/u);
-      expect(text).not.toContain("attachment-catalog-tiny");
+    expect(JSON.stringify(payloads)).not.toContain("MEDIA:");
+    if (split) {
+      expect(payloads.length).toBeGreaterThan(0);
+      for (const payload of payloads) {
+        const text = payload.message?.content?.[0]?.text ?? "";
+        expect(text).not.toMatch(/(?:^|\n)\s*(?:M|ME|MED|MEDI|MEDIA:)/u);
+        expect(text).not.toContain("attachment-catalog-tiny");
+      }
+      expect(payloads.at(-1)?.message?.content?.[0]?.text).toBe("Prepared the batch.");
+    } else {
+      expect(payloads).toEqual([expect.objectContaining({ state: "final", message: undefined })]);
     }
-    expect(payloads.at(-1)?.message?.content?.[0]?.text).toBe("Prepared the batch.");
     h.nowSpy?.mockRestore();
   });
 
   it.each([
     { text: "MEDIA:./image.png", delta: "", mediaUrls: ["./image.png"] },
     { text: "The selected size is\nM" },
-  ])("preserves ordinary MEDIA-like text at completion: $text", async (data) => {
+    { text: "No" },
+  ])("preserves ordinary control-like text at completion: $text", async (data) => {
     const h = createHarness({ now: 1_000 });
     h.registerNamed("ordinary-media");
     await h.emit("run-ordinary-media", "assistant", data);
@@ -2321,14 +2313,7 @@ describe("agent event handler", () => {
         sends.push(runtime.nodeSendToSession(key, event, payload, opts));
       },
     );
-    const claimId = expectDefined(
-      claimAgentRunContext(
-        runId,
-        { sessionKey, agentId: "main" },
-        { exclusive: true, trackOwner: true },
-      ),
-      "reply-dispatch owner claim",
-    );
+    const claimId = claimOwnedRun(runId, { sessionKey, agentId: "main" });
     const stop = subscribeAgentEvents(harness.handler);
     try {
       emitAgentEventForOwner(
@@ -2541,14 +2526,10 @@ describe("agent event handler", () => {
       const h = createHarness();
       const delivery = controlUiVisible ? h.broadcast : h.broadcastToConnIds;
       const claim = (runId: string) =>
-        expectDefined(
-          claimAgentRunContext(
-            runId,
-            { sessionKey: `session-${runId}`, isControlUiVisible: controlUiVisible },
-            { exclusive: true, trackOwner: true },
-          ),
-          "preview owner claim",
-        );
+        claimOwnedRun(runId, {
+          sessionKey: `session-${runId}`,
+          isControlUiVisible: controlUiVisible,
+        });
       const retiredRunId = "run-preview-retired";
       const activeRunId = "run-preview-active";
       const retiredClaim = claim(retiredRunId);
@@ -2636,14 +2617,7 @@ describe("agent event handler", () => {
     const h = createHarness();
     const runId = "run-owner-reuse";
     const claim = () =>
-      expectDefined(
-        claimAgentRunContext(
-          runId,
-          { sessionKey: "session-reuse", isControlUiVisible: false },
-          { exclusive: true, trackOwner: true },
-        ),
-        "reused run owner claim",
-      );
+      claimOwnedRun(runId, { sessionKey: "session-reuse", isControlUiVisible: false });
     const firstClaim = claim();
     let currentClaim = firstClaim;
     h.sessionMessageSubscribers.subscribe("conn-selected", "session-reuse");
@@ -2704,14 +2678,7 @@ describe("agent event handler", () => {
       loadGatewaySessionLifecycleSnapshotMock.mockImplementation((key: string) => ({
         row: { key, kind: "direct", updatedAt: 10_000, label },
       }));
-      const claimId = expectDefined(
-        claimAgentRunContext(
-          runId,
-          { sessionKey: "session-A", isControlUiVisible: false },
-          { exclusive: true, trackOwner: true },
-        ),
-        "hidden preview owner claim",
-      );
+      const claimId = claimOwnedRun(runId, { sessionKey: "session-A", isControlUiVisible: false });
       h.sessionMessageSubscribers.subscribe("conn-A", "session-A");
       h.sessionMessageSubscribers.subscribe("conn-B", "session-B");
       const stop = subscribeAgentEvents(h.handler);
