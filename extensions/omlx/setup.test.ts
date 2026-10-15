@@ -265,32 +265,60 @@ describe("oMLX setup through the inference catalog", () => {
     );
   });
 
-  it("does not forward saved credentials or headers when setup changes the endpoint", async () => {
-    const fetchMock = fixture();
-    const ctx = interactiveContext();
-    ctx.config = {
-      models: {
-        providers: {
-          omlx: {
-            baseUrl: "http://127.0.0.1:9000/v1",
-            apiKey: "old-endpoint-key",
-            headers: { Authorization: "Bearer old-header-key" },
-            request: { headers: { "X-Api-Key": "old-custom-key" } },
-            models: [],
+  it.each([undefined, true])(
+    "clears saved credentials on an endpoint switch with private-network policy %s",
+    async (allowPrivateNetwork) => {
+      const fetchMock = fixture();
+      const ctx = interactiveContext();
+      ctx.config = {
+        models: {
+          providers: {
+            omlx: {
+              baseUrl: "http://127.0.0.1:9000/v1",
+              apiKey: "old-endpoint-key",
+              auth: "api-key",
+              authHeader: false,
+              headers: { Authorization: "Bearer old-header-key" },
+              request: {
+                allowPrivateNetwork,
+                auth: { mode: "header", headerName: "X-Old-Auth", value: "old-auth-key" },
+                headers: { "X-Api-Key": "old-custom-key" },
+                tls: { cert: "old-client-cert", key: "old-client-key" },
+                proxy: {
+                  mode: "explicit-proxy",
+                  url: "http://fixture-user:fixture-password@proxy.example.test",
+                  tls: { passphrase: "old-proxy-passphrase" },
+                },
+              },
+              models: [],
+            },
           },
         },
-      },
-    };
-    const result = await configureOmlxInteractive(ctx);
-    expect(fetchMock.mock.lastCall?.[0]).toBe("http://127.0.0.1:8000/v1/models");
-    const headers = new Headers(fetchMock.mock.lastCall?.[1]?.headers);
-    expect(headers.has("authorization")).toBe(false);
-    expect(headers.has("x-api-key")).toBe(false);
-    const provider = result.configPatch?.models?.providers?.omlx;
-    expect(provider?.headers).toBeUndefined();
-    expect(provider?.request).toBeUndefined();
-    expect(provider?.apiKey).toBe("omlx-local");
-  });
+      };
+      const result = await configureOmlxInteractive(ctx);
+      expect(fetchMock.mock.lastCall?.[0]).toBe("http://127.0.0.1:8000/v1/models");
+      const headers = new Headers(fetchMock.mock.lastCall?.[1]?.headers);
+      expect(headers.has("authorization")).toBe(false);
+      expect(headers.has("x-api-key")).toBe(false);
+      expect(headers.has("x-old-auth")).toBe(false);
+      const provider = result.configPatch?.models?.providers?.omlx;
+      expect(provider).toHaveProperty("auth", undefined);
+      expect(provider).toHaveProperty("authHeader", undefined);
+      expect(provider).toHaveProperty("headers", undefined);
+      if (allowPrivateNetwork === undefined) {
+        expect(provider).toHaveProperty("request", undefined);
+      } else {
+        expect(provider?.request).toStrictEqual({
+          allowPrivateNetwork,
+          auth: undefined,
+          headers: undefined,
+          proxy: undefined,
+          tls: undefined,
+        });
+      }
+      expect(provider?.apiKey).toBe("omlx-local");
+    },
+  );
 
   it("validates noninteractive models before persistence", async () => {
     fixture();

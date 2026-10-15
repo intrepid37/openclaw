@@ -1,6 +1,11 @@
 import type { MemoryEmbeddingProviderAdapter } from "openclaw/plugin-sdk/embedding-provider-adapter";
 import { findNormalizedProviderKey } from "openclaw/plugin-sdk/provider-model-metadata";
-import { OMLX_DEFAULT_BASE_URL, OMLX_PROVIDER_ID } from "./defaults.js";
+import {
+  OMLX_API_KEY_ENV_VAR,
+  OMLX_DEFAULT_BASE_URL,
+  OMLX_LOCAL_API_KEY,
+  OMLX_PROVIDER_ID,
+} from "./defaults.js";
 
 export const omlxEmbeddingProvider: MemoryEmbeddingProviderAdapter = {
   id: OMLX_PROVIDER_ID,
@@ -29,6 +34,27 @@ export const omlxEmbeddingProvider: MemoryEmbeddingProviderAdapter = {
         { config, env: process.env },
         configured,
       );
+      const remoteKey = options.remote?.apiKey;
+      const hasRemoteAuth =
+        Boolean(typeof remoteKey === "string" ? remoteKey.trim() : remoteKey) ||
+        Object.entries(options.remote?.headers ?? {}).some(
+          ([name, value]) => name.trim().toLowerCase() === "authorization" && Boolean(value.trim()),
+        );
+      let apiKey = configured.apiKey;
+      if (!hasHeaderAuth && !hasRemoteAuth && apiKey === OMLX_API_KEY_ENV_VAR) {
+        apiKey = process.env[OMLX_API_KEY_ENV_VAR];
+        if (!apiKey) {
+          const { resolveApiKeyForProvider } =
+            await import("openclaw/plugin-sdk/provider-auth-runtime");
+          apiKey = (
+            await resolveApiKeyForProvider({
+              provider: providerId,
+              cfg: config,
+              agentDir: options.agentDir,
+            })
+          ).apiKey;
+        }
+      }
       config = {
         ...config,
         models: {
@@ -38,7 +64,7 @@ export const omlxEmbeddingProvider: MemoryEmbeddingProviderAdapter = {
             [configuredKey]: {
               ...configured,
               headers,
-              ...(hasHeaderAuth ? { apiKey: undefined } : {}),
+              apiKey: hasHeaderAuth || apiKey === OMLX_LOCAL_API_KEY ? undefined : apiKey,
             },
           },
         },

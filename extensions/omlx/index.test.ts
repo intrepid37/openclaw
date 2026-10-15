@@ -1,5 +1,6 @@
 import type { OpenClawConfig } from "openclaw/plugin-sdk/plugin-entry";
 import { capturePluginRegistration } from "openclaw/plugin-sdk/plugin-test-runtime";
+import { withOpenClawTestState } from "openclaw/plugin-sdk/test-state";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import plugin from "./index.js";
 
@@ -17,6 +18,88 @@ function embeddingAdapter() {
 }
 
 describe("oMLX registered embedding provider", () => {
+  it("resolves setup credentials without replacing literal or destination-owned keys", async () => {
+    await withOpenClawTestState({ label: "omlx-embedding-auth" }, async (state) => {
+      const agentDir = state.agentDir();
+      await state.writeAuthProfiles({
+        version: 1,
+        profiles: {
+          "omlx:default": {
+            type: "api_key",
+            provider: "omlx",
+            key: "fixture-saved-omlx-key",
+          },
+        },
+      });
+      const requests: Array<{ url: string; authorization: string | null }> = [];
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+          const request = new Request(input, init);
+          requests.push({
+            url: request.url,
+            authorization: request.headers.get("authorization"),
+          });
+          return Response.json({ data: [{ index: 0, embedding: [1, 0] }] });
+        }),
+      );
+      for (const scenario of [
+        { envKey: undefined, apiKey: "OMLX_API_KEY", remote: undefined },
+        { envKey: "fixture-env-omlx-key", apiKey: "OMLX_API_KEY", remote: undefined },
+        { envKey: "fixture-env-omlx-key", apiKey: "fixture-literal-omlx-key", remote: undefined },
+        {
+          envKey: undefined,
+          apiKey: "OMLX_API_KEY",
+          remote: {
+            baseUrl: "http://127.0.0.1:18002/v1",
+            apiKey: "fixture-memory-omlx-key",
+          },
+        },
+      ]) {
+        vi.stubEnv("OMLX_API_KEY", scenario.envKey);
+        const result = await embeddingAdapter().create({
+          config: {
+            auth: {
+              profiles: { "omlx:default": { provider: "omlx", mode: "api_key" } },
+            },
+            models: {
+              providers: {
+                omlx: {
+                  baseUrl: "http://127.0.0.1:8000/v1",
+                  api: "openai-completions",
+                  apiKey: scenario.apiKey,
+                  models: [],
+                },
+              },
+            },
+          },
+          agentDir,
+          model: "fixture-embedding",
+          remote: scenario.remote,
+        });
+        await expect(result.provider?.embed("orchard")).resolves.toEqual([1, 0]);
+      }
+      expect(requests).toEqual([
+        {
+          url: "http://127.0.0.1:8000/v1/embeddings",
+          authorization: "Bearer fixture-saved-omlx-key",
+        },
+        {
+          url: "http://127.0.0.1:8000/v1/embeddings",
+          authorization: "Bearer fixture-env-omlx-key",
+        },
+        {
+          url: "http://127.0.0.1:8000/v1/embeddings",
+          authorization: "Bearer fixture-literal-omlx-key",
+        },
+        {
+          url: "http://127.0.0.1:18002/v1/embeddings",
+          authorization: "Bearer fixture-memory-omlx-key",
+        },
+      ]);
+    });
+  });
+
   it.each([
     {
       name: "the default keyless server",
@@ -24,6 +107,60 @@ describe("oMLX registered embedding provider", () => {
       remote: undefined,
       endpoint: "http://127.0.0.1:8000/v1/embeddings",
       authorization: null,
+    },
+    {
+      name: "the configured keyless server",
+      config: {
+        models: {
+          providers: {
+            omlx: {
+              baseUrl: "http://127.0.0.1:8000/v1",
+              api: "openai-completions",
+              apiKey: "omlx-local",
+              models: [],
+            },
+          },
+        },
+      },
+      remote: undefined,
+      endpoint: "http://127.0.0.1:8000/v1/embeddings",
+      authorization: null,
+    },
+    {
+      name: "a same-endpoint memory key without a profile",
+      config: {
+        models: {
+          providers: {
+            omlx: {
+              baseUrl: "http://127.0.0.1:8000/v1",
+              api: "openai-completions",
+              apiKey: "OMLX_API_KEY",
+              models: [],
+            },
+          },
+        },
+      },
+      remote: { apiKey: "fixture-memory-key" },
+      endpoint: "http://127.0.0.1:8000/v1/embeddings",
+      authorization: "Bearer fixture-memory-key",
+    },
+    {
+      name: "a same-endpoint memory header without a profile",
+      config: {
+        models: {
+          providers: {
+            omlx: {
+              baseUrl: "http://127.0.0.1:8000/v1",
+              api: "openai-completions",
+              apiKey: "OMLX_API_KEY",
+              models: [],
+            },
+          },
+        },
+      },
+      remote: { headers: { authorization: "Bearer fixture-memory-header" } },
+      endpoint: "http://127.0.0.1:8000/v1/embeddings",
+      authorization: "Bearer fixture-memory-header",
     },
     {
       name: "the configured provider connection",
@@ -70,10 +207,11 @@ describe("oMLX registered embedding provider", () => {
   ] satisfies Array<{
     name: string;
     config: OpenClawConfig;
-    remote: { baseUrl: string; apiKey: string } | undefined;
+    remote: { baseUrl?: string; apiKey?: string; headers?: Record<string, string> } | undefined;
     endpoint: string;
     authorization: string | null;
   }>)("embeds through $name", async ({ config, remote, endpoint, authorization }) => {
+    vi.stubEnv("OMLX_API_KEY", undefined);
     const requests: Array<{ url: string; body: unknown; authorization: string | null }> = [];
     vi.stubGlobal(
       "fetch",
@@ -154,7 +292,7 @@ describe("oMLX registered embedding provider", () => {
             omlx: {
               baseUrl: "http://127.0.0.1:8000/v1",
               api: "openai-completions",
-              apiKey: "stale-provider-key",
+              apiKey: "OMLX_API_KEY",
               headers: { Authorization: "Bearer stale-header" },
               request,
               models: [],

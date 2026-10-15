@@ -39,11 +39,31 @@ function automaticModels(listing: Listing) {
 }
 
 function setupResult(listing: Listing, modelId: string): ProviderAuthResult {
+  const { provider } = listing;
   return {
     profiles: [],
     defaultModel: `${OMLX_PROVIDER_ID}/${modelId}`,
     configPatch: {
-      models: { providers: { [OMLX_PROVIDER_ID]: listing.provider } },
+      models: {
+        providers: {
+          [OMLX_PROVIDER_ID]: {
+            ...provider,
+            // Auth patches deep-merge; explicit undefined removes prior endpoint credentials.
+            auth: provider.auth,
+            authHeader: provider.authHeader,
+            headers: provider.headers,
+            request: provider.request
+              ? {
+                  ...provider.request,
+                  auth: provider.request.auth,
+                  headers: provider.request.headers,
+                  proxy: provider.request.proxy,
+                  tls: provider.request.tls,
+                }
+              : undefined,
+          },
+        },
+      },
     },
   };
 }
@@ -119,8 +139,8 @@ export async function configureOmlxInteractive(
     options: listing.provider.models.map((model) => ({ value: model.id, label: model.name })),
   });
   ctx.signal?.throwIfAborted();
-  const result = setupResult(listing, modelId);
   listing.provider.apiKey = apiKey ? OMLX_API_KEY_ENV_VAR : OMLX_LOCAL_API_KEY;
+  const result = setupResult(listing, modelId);
   if (apiKey) {
     result.profiles = [
       {
