@@ -33,6 +33,17 @@ it("retains the selected entry and interpreter flags for a loose CLI", () => {
   });
 });
 
+it("does not inherit the caller's entry for an explicit CLI command", () => {
+  expect(
+    resolveOpenClawCliInvocation({
+      execPath: "/synthetic/openclaw-wrapper",
+      entryPath: null,
+      execArgv: ["--inspect"],
+      args: ["gateway", "restart"],
+    }),
+  ).toEqual({ command: "/synthetic/openclaw-wrapper", args: ["gateway", "restart"] });
+});
+
 it("uses the embedded fact for a self respawn without a script or interpreter flags", () => {
   vi.stubGlobal("__openclawStandaloneRootUrl", "file:///synthetic/runtime/");
   expect(

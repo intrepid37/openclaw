@@ -14,7 +14,8 @@ export function isStandaloneRuntimeExecutable(executable?: string): boolean;
 export function getEmbeddedStandaloneRuntimeRoot(): string | undefined;
 export function resolveOpenClawCliInvocation(params?: {
   execPath?: string;
-  entryPath?: string;
+  /** Null selects an executable CLI command without inheriting the current script. */
+  entryPath?: string | null;
   args?: readonly string[];
   execArgv?: readonly string[];
 }): { command: string; args: string[] };

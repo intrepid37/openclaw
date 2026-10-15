@@ -79,7 +79,7 @@ export function isStandaloneRuntimeExecutable(executable = process.execPath) {
   return resolveStandaloneSidecarRoot(executable) !== undefined;
 }
 
-/** Interpreter flags and a script entry belong only to a loose CLI invocation. */
+/** A null entry explicitly selects a CLI command; undefined inherits the current script. */
 export function resolveOpenClawCliInvocation({
   execPath = process.execPath,
   entryPath,
@@ -87,8 +87,8 @@ export function resolveOpenClawCliInvocation({
   execArgv = process.execArgv,
 } = {}) {
   const standaloneRoot = resolveStandaloneSidecarRoot(execPath);
-  if (standaloneRoot !== undefined) {
-    if (entryPath !== undefined) {
+  if (standaloneRoot !== undefined || entryPath === null) {
+    if (standaloneRoot !== undefined && entryPath !== undefined && entryPath !== null) {
       const relative = path.relative(standaloneRoot, path.resolve(entryPath));
       if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
         throw new Error(
