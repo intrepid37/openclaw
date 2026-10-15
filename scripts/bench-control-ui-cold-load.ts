@@ -508,6 +508,14 @@ try {
     if (streamingReply) {
       const composer = page.locator(".agent-chat__composer-combobox textarea").last();
       await composer.focus();
+      await cdp.send("Performance.enable");
+      let previousCpu = (await cdp.send("Performance.getMetrics")).metrics;
+      let previousDelivered = 0;
+      const cpu: Array<{
+        delivered: number;
+        deltas: number;
+        milliseconds: Record<string, number>;
+      }> = [];
       await page.evaluate((input) => Reflect.get(window, "__streamingReply").start(input), {
         ...streamingReply,
         sessionKey: fixture.selectedSessionKey,
@@ -521,22 +529,47 @@ try {
         }
       })();
       try {
-        await page.waitForFunction(
-          (count) => Reflect.get(window, "__streamingReply").read().delivered === count,
-          streamingReply.deltas.length,
-          { timeout: 60_000 },
-        );
-        await page.evaluate(
-          () =>
-            new Promise<void>((resolve) =>
-              requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        for (let quartile = 1; quartile <= 4; quartile++) {
+          await page.waitForFunction(
+            (count) => Reflect.get(window, "__streamingReply").read().delivered >= count,
+            Math.floor((streamingReply.deltas.length * quartile) / 4),
+            { timeout: 60_000 },
+          );
+          await page.evaluate(
+            () =>
+              new Promise<void>((resolve) =>
+                requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+              ),
+          );
+          const nextCpu = (await cdp.send("Performance.getMetrics")).metrics;
+          const delivered = await page.evaluate(
+            () => Reflect.get(window, "__streamingReply").read().delivered,
+          );
+          cpu.push({
+            delivered,
+            deltas: delivered - previousDelivered,
+            milliseconds: Object.fromEntries(
+              ["TaskDuration", "ScriptDuration", "LayoutDuration", "RecalcStyleDuration"].map(
+                (name) => [
+                  name,
+                  1000 *
+                    (nextCpu.find((metric) => metric.name === name)!.value -
+                      previousCpu.find((metric) => metric.name === name)!.value),
+                ],
+              ),
             ),
-        );
+          });
+          previousCpu = nextCpu;
+          previousDelivered = delivered;
+        }
       } finally {
         streamingFinished = true;
         await nativeInput;
       }
-      streaming = await page.evaluate(() => Reflect.get(window, "__streamingReply").finish());
+      streaming = {
+        ...(await page.evaluate(() => Reflect.get(window, "__streamingReply").finish())),
+        cpu,
+      };
       if (!streaming.finalHtml) {
         throw new Error("Streaming reply produced no visible Markdown");
       }
