@@ -48,15 +48,60 @@ import {
   pruneUsageCostRollupsForTest,
   readSessionCostUsageRollupRows,
 } from "./session-cost-usage-cache.test-support.js";
+import { openUsageCostRefreshFailures } from "./session-cost-usage-refresh-health.js";
 import { withSessionCostUsageWorkerDatabases } from "./session-cost-usage-worker-scope.js";
 import { revokeSqliteDatabaseAdmissionsForPath } from "./sqlite-database-admission.js";
 import * as integrityWorker from "./sqlite-integrity-worker.js";
+import { WorkerTaskPool } from "./worker-task-pool.js";
+import type { WorkerTaskInput, WorkerTaskOptions } from "./worker-task-pool.types.js";
 
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
 afterEach(async () => {
   vi.restoreAllMocks();
   await closeOpenClawAgentDatabasesAsync();
   closeOpenClawStateDatabaseForTest();
+});
+
+it("records all uncommitted rollups when a scan fails before publication", async () => {
+  await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
+    const agentId = "usage-uncommitted-health";
+    const sessionFiles = ["a", "b"].map((id) => state.path(`${id}.jsonl`));
+    for (const file of sessionFiles) {
+      fs.writeFileSync(file, "{}\n");
+    }
+    // oxlint-disable-next-line typescript/unbound-method -- The observer forwards the pool receiver.
+    const run = WorkerTaskPool.prototype.run;
+    const observer = vi.spyOn(WorkerTaskPool.prototype, "run").mockImplementation(function (
+      this: WorkerTaskPool<unknown, unknown>,
+      input: WorkerTaskInput<unknown>,
+      options: WorkerTaskOptions<unknown>,
+    ) {
+      const onRequest = options.onRequest;
+      if (!onRequest) {
+        return run.call(this, input, options);
+      }
+      return run.call(this, input, {
+        ...options,
+        onRequest: async (_value, context) => {
+          // Exercise the host's scan-failure boundary without a wall-clock-dependent batch.
+          for (const sessionFile of sessionFiles) {
+            await onRequest({ kind: "refresh-session", input: { sessionFile } }, context);
+          }
+          throw new Error("synthetic scan failure");
+        },
+      });
+    });
+    try {
+      await expect(
+        refreshCostUsageCacheForAgent({ config: {}, agentId, sessionFiles }),
+      ).rejects.toThrow("synthetic scan failure");
+    } finally {
+      observer.mockRestore();
+    }
+    expect(readSessionCostUsageRollupRows(agentId)).toEqual([]);
+    const failures = await openUsageCostRefreshFailures(state.env).entries();
+    expect(failures.map(({ value }) => value.sessionFile).toSorted()).toEqual(sessionFiles);
+  });
 });
 
 it.each(["rollup", "prune"] as const)(
