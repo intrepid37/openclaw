@@ -1,6 +1,6 @@
 import { nothing, render } from "lit";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
-import { updatePickers, choosePickerValue } from "../test-helpers/select-picker.ts";
+import { updatePickers, openPicker, choosePickerValue } from "../test-helpers/select-picker.ts";
 import { renderModelPicker } from "./model-picker.ts";
 import type { SelectPicker } from "./select-picker.ts";
 import { installTitleTooltips } from "./tooltip-title.ts";
@@ -33,6 +33,7 @@ describe("renderModelPicker", () => {
       container,
     );
     await updatePickers(container);
+    await openPicker(container.querySelector("openclaw-select-picker")!);
     const rows = Array.from(container.querySelectorAll('[role="option"][data-value]'));
     expect(rows).toHaveLength(300);
     expect(rows.slice(0, 3).map((row) => row.getAttribute("data-value"))).toEqual([
@@ -63,6 +64,7 @@ describe("renderModelPicker", () => {
       container,
     );
     await updatePickers(container);
+    await openPicker(container.querySelector("openclaw-select-picker")!);
 
     expect(
       container.querySelector('[role="option"][data-value=""] .picker-select__leading'),
@@ -93,6 +95,7 @@ describe("renderModelPicker", () => {
       container,
     );
     await updatePickers(container);
+    await openPicker(container.querySelector("openclaw-select-picker")!);
 
     const customOption = Array.from(container.querySelectorAll('[role="option"]')).find(
       (option) => option.textContent?.trim() === "Custom model…",
