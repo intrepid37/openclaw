@@ -1,10 +1,10 @@
-import { type OpenClawConfig } from "openclaw/plugin-sdk/provider-auth";
+import type { OpenClawConfig } from "openclaw/plugin-sdk/provider-auth";
 import {
   buildOpenAICompatibleLiveModels,
   LiveModelCatalogHttpError,
   runLiveProviderCatalog,
 } from "openclaw/plugin-sdk/provider-catalog-live-runtime";
-import { type ModelProviderConfig } from "openclaw/plugin-sdk/provider-model-shared";
+import type { ModelProviderConfig } from "openclaw/plugin-sdk/provider-model-shared";
 import {
   discoverOpenAICompatibleLocalModels,
   type ProviderCatalogContext,

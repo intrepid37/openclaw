@@ -78,10 +78,11 @@ describe("oMLX registered embedding provider", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+        const request = new Request(url, init);
         requests.push({
-          url: String(url),
-          body: JSON.parse(String(init?.body)),
-          authorization: new Headers(init?.headers).get("authorization"),
+          url: request.url,
+          body: await request.json(),
+          authorization: request.headers.get("authorization"),
         });
         return Response.json({
           data: [
@@ -197,7 +198,7 @@ it("connects the registered setup and catalog hooks to the inference models endp
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string | URL | Request) => {
-      paths.push(new URL(String(url)).pathname);
+      paths.push(new URL(new Request(url).url).pathname);
       return Response.json({
         data: [{ id: "Qwen2.5-3B-Instruct-4bit", max_model_len: 32768 }],
       });
