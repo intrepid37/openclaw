@@ -521,11 +521,13 @@ try {
         sessionKey: fixture.selectedSessionKey,
         runId: fixture.scenario.inFlightRun!.runId,
       });
-      let streamingFinished = false;
+      const streamingInput = new AbortController();
       const nativeInput = (async () => {
-        while (!streamingFinished) {
+        while (!streamingInput.signal.aborted) {
           await page.keyboard.press("x");
-          await new Promise((resolve) => setTimeout(resolve, 500));
+          await new Promise((resolve) => {
+            setTimeout(resolve, 500);
+          });
         }
       })();
       try {
@@ -537,9 +539,9 @@ try {
           );
           await page.evaluate(
             () =>
-              new Promise<void>((resolve) =>
-                requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
-              ),
+              new Promise<void>((resolve) => {
+                requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+              }),
           );
           const nextCpu = (await cdp.send("Performance.getMetrics")).metrics;
           const delivered = await page.evaluate(
@@ -563,7 +565,7 @@ try {
           previousDelivered = delivered;
         }
       } finally {
-        streamingFinished = true;
+        streamingInput.abort();
         await nativeInput;
       }
       streaming = {

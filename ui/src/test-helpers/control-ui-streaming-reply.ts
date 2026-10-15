@@ -40,26 +40,33 @@ function installStreamingReplyProbe() {
   const longFrames: Array<{ start: number; duration: number; blocking: number }> = [];
   const channel = new MessageChannel();
   const taskEnds: Array<{ delta: Delta; at: number }> = [];
-  channel.port1.onmessage = () => {
+  channel.port1.addEventListener("message", () => {
     const pending = taskEnds.shift();
     if (pending) {
       pending.delta.taskAndMicrotasksMs = performance.now() - pending.at;
     }
-  };
+  });
+  channel.port1.start();
   const OriginalWebSocket = window.WebSocket;
   window.WebSocket = new Proxy(OriginalWebSocket, {
     construct(target, args) {
       const socket: WebSocket = Reflect.construct(target, args);
       socket.addEventListener("message", (event: MessageEvent) => {
-        if (!active || typeof event.data !== "string") return;
+        if (!active || typeof event.data !== "string") {
+          return;
+        }
         const frame = JSON.parse(event.data);
-        if (frame.event !== "chat") return;
+        if (frame.event !== "chat") {
+          return;
+        }
         const payload = frame.payload;
         if (payload?.state === "final") {
           finalReceived = true;
           return;
         }
-        if (payload?.state !== "delta") return;
+        if (payload?.state !== "delta") {
+          return;
+        }
         current = {
           index: deltas.length + 1,
           chars: payload.message.content[0].text.length,
@@ -77,15 +84,16 @@ function installStreamingReplyProbe() {
       return socket;
     },
   });
+  // oxlint-disable-next-line typescript/unbound-method -- Capture the native hook and preserve each caller's receiver below.
   const parse = DOMParser.prototype.parseFromString;
-  DOMParser.prototype.parseFromString = function (source, type) {
+  DOMParser.prototype.parseFromString = function (this: DOMParser, source, type) {
     const start = performance.now();
     try {
       return parse.call(this, source, type);
     } finally {
       if (active && current) {
         current.parseCalls++;
-        current.parseChars += String(source).length;
+        current.parseChars += source.length;
         current.parseMs += performance.now() - start;
       }
     }
@@ -100,24 +108,31 @@ function installStreamingReplyProbe() {
       } finally {
         if (active && current && this instanceof HTMLTemplateElement) {
           current.parseCalls++;
-          current.parseChars += String(value).length;
+          current.parseChars += value.length;
           current.parseMs += performance.now() - start;
         }
       }
     },
   });
+  // oxlint-disable-next-line typescript/unbound-method -- The native hook is invoked with each element as its receiver.
   const rect = Element.prototype.getBoundingClientRect;
-  Element.prototype.getBoundingClientRect = function () {
-    if (active && current) current.geometryReads++;
+  Element.prototype.getBoundingClientRect = function (this: Element) {
+    if (active && current) {
+      current.geometryReads++;
+    }
     return rect.call(this);
   };
   const style = window.getComputedStyle;
   window.getComputedStyle = (...args) => {
-    if (active && current) current.styleReads++;
+    if (active && current) {
+      current.styleReads++;
+    }
     return style.apply(window, args);
   };
   document.addEventListener("keydown", (event) => {
-    if (!active || !event.isTrusted) return;
+    if (!active || !event.isTrusted) {
+      return;
+    }
     const start = performance.now();
     const sample = { delayMs: Math.max(0, start - event.timeStamp), chars: current?.chars ?? 0 };
     inputs.push(sample);
@@ -126,7 +141,9 @@ function installStreamingReplyProbe() {
     });
   });
   new PerformanceObserver((list) => {
-    if (!active) return;
+    if (!active) {
+      return;
+    }
     for (const entry of list.getEntries()) {
       const blocking = Reflect.get(entry, "blockingDuration");
       longFrames.push({
@@ -137,7 +154,9 @@ function installStreamingReplyProbe() {
     }
   }).observe({ type: "long-animation-frame", buffered: true });
   const frame = (at: number) => {
-    if (!active) return;
+    if (!active) {
+      return;
+    }
     frames.push(at - startedAt);
     requestAnimationFrame(frame);
   };
