@@ -280,7 +280,9 @@ describe("applyNonInteractiveAuthChoice", () => {
   });
 
   it("uses model ids prepared before reset without rediscovery", async () => {
-    const request = vi.spyOn(fetchGuard, "fetchWithSsrFGuard");
+    const request = vi
+      .spyOn(fetchGuard, "fetchWithSsrFGuard")
+      .mockRejectedValue(new Error("Unexpected discovery request"));
     const result = await applyChoice({
       opts: {
         customBaseUrl: "https://models.custom.local/v1",
@@ -332,7 +334,9 @@ describe("applyNonInteractiveAuthChoice", () => {
   });
 
   it("keeps an explicit model authoritative without discovering", async () => {
-    const request = vi.spyOn(fetchGuard, "fetchWithSsrFGuard");
+    const request = vi
+      .spyOn(fetchGuard, "fetchWithSsrFGuard")
+      .mockRejectedValue(new Error("Unexpected discovery request"));
     const result = await applyChoice({
       opts: {
         customBaseUrl: "https://models.custom.local/v1",

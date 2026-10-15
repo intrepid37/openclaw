@@ -14,10 +14,14 @@ vi.mock("../plugins/manifest-contract-eligibility.js", async (importOriginal) =>
   loadManifestMetadataSnapshot,
 }));
 
-vi.mock("../plugins/current-plugin-metadata-snapshot.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../plugins/current-plugin-metadata-snapshot.js")>()),
-  getCurrentPluginMetadataSnapshot: () => ({ plugins: [] }),
-}));
+vi.mock("../plugins/current-plugin-metadata-snapshot.js", async (importOriginal) => {
+  const { createEmptyPluginMetadataSnapshot } =
+    await import("../plugins/plugin-metadata-empty.test-support.js");
+  return {
+    ...(await importOriginal<typeof import("../plugins/current-plugin-metadata-snapshot.js")>()),
+    getCurrentPluginMetadataSnapshot: () => createEmptyPluginMetadataSnapshot(),
+  };
+});
 
 vi.mock("../plugins/provider-auth-input.js", () => ({
   ensureApiKeyFromEnvOrPrompt: vi.fn(
@@ -158,10 +162,10 @@ describe("promptCustomApiConfig", () => {
   });
 
   it("selects an advertised model during deferred custom setup", async () => {
-    discoveryFetch.mockResolvedValue({
+    discoveryFetch.mockImplementation(async () => ({
       response: Response.json({ data: [{ id: "local-small" }, { id: "local-large" }] }),
       release: async () => {},
-    });
+    }));
     const prompter = createTestPrompter({
       text: ["http://localhost:1234/v1", "fixture-key", "custom", ""],
       select: ["plaintext", "openai", "local-large"],
@@ -184,7 +188,7 @@ describe("promptCustomApiConfig", () => {
         ],
       }),
     );
-    expect(discoveryFetch).toHaveBeenCalledWith(
+    expect(discoveryFetch).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({
         url: "http://localhost:1234/v1/models",
         init: { headers: { Authorization: "Bearer fixture-key" } },
@@ -194,10 +198,10 @@ describe("promptCustomApiConfig", () => {
   });
 
   it("keeps manual model entry available when discovery succeeds", async () => {
-    discoveryFetch.mockResolvedValue({
+    discoveryFetch.mockImplementation(async () => ({
       response: Response.json({ data: [{ id: "advertised-model" }] }),
       release: async () => {},
-    });
+    }));
     const prompter = createTestPrompter({
       text: ["http://localhost:1234/v1", "", "unlisted-model", "custom", ""],
       select: ["plaintext", "openai-responses", ""],
@@ -206,6 +210,15 @@ describe("promptCustomApiConfig", () => {
       verification: "deferred",
     });
     expect(result.modelId).toBe("unlisted-model");
+    expect(discoveryFetch).toHaveBeenCalledOnce();
+    expect(prompter.select).toHaveBeenCalledWith(
+      expect.objectContaining({
+        options: [
+          { value: "advertised-model", label: "advertised-model" },
+          { value: "", label: "Enter a model ID manually" },
+        ],
+      }),
+    );
   });
 
   it.each(["empty", "invalid", "http", "timeout"])(
