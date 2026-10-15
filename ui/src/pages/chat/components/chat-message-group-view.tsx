@@ -43,7 +43,8 @@ import {
 } from "./chat-reply-attribution.ts";
 import { ReplyLineView, ReplyLineConnector } from "./chat-reply-attribution.tsx";
 import { ChatSessionActivity } from "./chat-session-activity.solid.tsx";
-import { renderBrowserTabPreviews } from "./chat-tool-cards.ts";
+import { BrowserTabPreviews } from "./chat-tool-cards.solid.tsx";
+import { selectBrowserTabPreviews } from "./chat-tool-cards.ts";
 import { TurnRecapRow } from "./chat-working-indicator.tsx";
 
 export type { NativeMessageGroupOptions } from "./chat-message-group-frame.ts";
@@ -184,7 +185,7 @@ export function MessageGroupContent(props: {
         )}
       </For>
       {options().showToolCalls === false ? undefined : (
-        <LitContent value={renderBrowserTabPreviews([props.group], options())} />
+        <BrowserTabPreviews previews={selectBrowserTabPreviews([props.group], options())} />
       )}
     </Show>
   );
@@ -412,7 +413,7 @@ function FramedMessageGroup(props: {
           {options().frameContent}
         </Show>
         {frame().ownsRunFrame || options().showToolCalls === false ? undefined : (
-          <LitContent value={renderBrowserTabPreviews([props.group], options())} />
+          <BrowserTabPreviews previews={selectBrowserTabPreviews([props.group], options())} />
         )}
         <Show
           when={Boolean(options().activeContinuation)}

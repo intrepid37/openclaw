@@ -145,6 +145,57 @@ function drawThread(props: ReturnType<typeof threadProps>) {
   };
 }
 
+it("renders browser previews in their own row outside the work summary", () => {
+  const props = threadProps(
+    "projection-browser-preview",
+    "agent:main:dashboard:projection-browser-preview",
+    [
+      { role: "user", content: "Inspect the example page", timestamp: 1_000 },
+      {
+        role: "assistant",
+        content: "I will inspect the example page.",
+        timestamp: 2_000,
+        phase: "final_answer",
+      },
+      {
+        role: "toolResult",
+        toolCallId: "browser-call",
+        toolName: "browser",
+        timestamp: 3_000,
+        content: "Opened",
+        details: {
+          browserTab: {
+            profile: "managed",
+            target: "host",
+            targetId: "example-tab",
+            url: "https://example.com",
+            title: "Example page",
+          },
+        },
+      },
+      { role: "assistant", content: "The page is ready.", timestamp: 4_000 },
+    ],
+  );
+  props.showToolCalls = true;
+  const view = drawThread(props);
+  try {
+    view.draw();
+    const card = view.container.querySelector("openclaw-browser-tab-card");
+    const previews = card?.closest(".chat-group--turn-block");
+    expect(card).not.toBeNull();
+    expect(previews).not.toBeNull();
+    expect(card?.preview?.url).toBe("https://example.com");
+    expect(card?.preview?.title).toBe("Example page");
+    expect(previews?.closest(".chat-work-group")).toBeNull();
+    expect(view.container.querySelector(".chat-work-group")).not.toBeNull();
+    expect(view.container.textContent).toContain("I will inspect the example page.");
+    expect(view.container.textContent).toContain("The page is ready.");
+    expect(view.container.textContent).not.toContain("[object Object]");
+  } finally {
+    view.dispose();
+  }
+});
+
 it("refreshes sender names for a replaced sender and a changed signed-in viewer", () => {
   const own = personMessage("alex", "Alex", 1);
   const props = threadProps("projection-sender", "agent:main:main", [own]);
