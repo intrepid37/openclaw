@@ -307,7 +307,7 @@ export function Menu(props: BranchProps): JSX.Element {
       return;
     }
     const candidates = controls.includes(target)
-      ? [...controls, ...ownItems(overlay.surface)].sort((left, right) =>
+      ? [...controls, ...ownItems(overlay.surface)].toSorted((left, right) =>
           left.compareDocumentPosition(right) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1,
         )
       : controls;

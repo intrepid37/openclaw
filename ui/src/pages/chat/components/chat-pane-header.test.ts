@@ -138,6 +138,7 @@ describe("chat pane header", () => {
       ),
     ).toEqual(["Share", "Layout", "…"]);
     const menu = actions.querySelector(".chat-pane__layout-menu")!;
+    expect(menu.querySelector("[role^=menuitem]")).toBeNull();
     await openNativeMenu(menu);
     expect(
       [...menu.querySelectorAll("[role^=menuitem]")].map((item) => item.textContent?.trim()),

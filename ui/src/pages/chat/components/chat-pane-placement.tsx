@@ -178,6 +178,7 @@ export function ChatPanePlacement(props: {
       {(view) => (
         <div class="chat-pane__placement-control">
           <Menu
+            lazy
             id={id}
             class="chat-pane__placement-menu"
             placement="bottom-start"

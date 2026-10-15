@@ -60,6 +60,7 @@ function ChatPaneVersionsMenuContent(props: Props) {
   return (
     <Show when={!props.menu.catalog && props.menu.branches.length > 1}>
       <Menu
+        lazy
         id={id}
         class="chat-pane__branches-menu"
         placement="bottom-end"

@@ -215,6 +215,7 @@ export function ChatPaneLayoutMenu(props: ChatPaneLayoutMenuProps) {
   return (
     <Show when={model().allActions.length > 0 || model().mainHeaderAction}>
       <Menu
+        lazy
         id={id}
         class={`chat-pane__layout-menu chat-panel-layout-menu${props.mobile ? " chat-panel-layout-menu--mobile" : ""}`}
         placement="bottom-end"

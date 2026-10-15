@@ -54,10 +54,17 @@ function mount(
   return container;
 }
 
+async function openPlacement(container: HTMLElement) {
+  const panel = container.querySelector<HTMLElement>('.chat-pane__placement-menu > [role="menu"]')!;
+  expect(panel.querySelector("[role^=menuitem]")).toBeNull();
+  container.querySelector<HTMLButtonElement>(".chat-pane__placement-chip")!.click();
+  await waitForSolid(() => expect(panel.matches(":popover-open")).toBe(true));
+}
+
 describe("chat pane device placement", () => {
   it.each(["profile", "device"] as const)(
     "presents post-turn workspace sync for %s without cloud-only wording",
-    (target) => {
+    async (target) => {
       const container = document.createElement("div");
       document.body.append(container);
       containers.push(container);
@@ -98,6 +105,7 @@ describe("chat pane device placement", () => {
       expect(container.querySelector(".chat-pane__placement-chip")?.textContent?.trim()).toBe(
         "Worker · syncing files",
       );
+      await openPlacement(container);
       expect(container.querySelector(".chat-pane__placement-note")?.textContent).toContain(
         "Finalizing worker workspace",
       );
@@ -140,32 +148,36 @@ describe("chat pane device placement", () => {
       waiting: false,
       stop: "Stop cloud worker…",
     },
-  ])("renders $status active ownership ahead of $phase $targetKind startup intent", (scenario) => {
-    const container = mount(scenario.status, {
-      phase: scenario.phase,
-      targetKind: scenario.targetKind,
-    });
+  ])(
+    "renders $status active ownership ahead of $phase $targetKind startup intent",
+    async (scenario) => {
+      const container = mount(scenario.status, {
+        phase: scenario.phase,
+        targetKind: scenario.targetKind,
+      });
 
-    expect(container.querySelector(".chat-pane__placement-chip")?.textContent?.trim()).toBe(
-      scenario.label,
-    );
-    expect(container.querySelector(".chat-pane__placement-move")?.textContent?.trim()).toBe(
-      scenario.move,
-    );
-    const note = container.querySelector(".chat-pane__placement-note");
-    const move = container.querySelector<HTMLElement>(".chat-pane__placement-move");
-    const reclaim = container.querySelector<HTMLElement>(".chat-pane__placement-reclaim");
-    expect(move?.hasAttribute("disabled")).toBe(false);
-    expect(reclaim?.textContent?.trim()).toBe(scenario.stop);
-    if (scenario.waiting) {
-      expect(note?.textContent).toContain("Waiting for device to reconnect");
-      expect(reclaim?.hasAttribute("disabled")).toBe(true);
-      expect(reclaim?.title).toContain("Reconnect the device");
-    } else {
-      expect(note).toBeNull();
-      expect(reclaim?.hasAttribute("disabled")).toBe(false);
-    }
-  });
+      expect(container.querySelector(".chat-pane__placement-chip")?.textContent?.trim()).toBe(
+        scenario.label,
+      );
+      await openPlacement(container);
+      expect(container.querySelector(".chat-pane__placement-move")?.textContent?.trim()).toBe(
+        scenario.move,
+      );
+      const note = container.querySelector(".chat-pane__placement-note");
+      const move = container.querySelector<HTMLElement>(".chat-pane__placement-move");
+      const reclaim = container.querySelector<HTMLElement>(".chat-pane__placement-reclaim");
+      expect(move?.hasAttribute("disabled")).toBe(false);
+      expect(reclaim?.textContent?.trim()).toBe(scenario.stop);
+      if (scenario.waiting) {
+        expect(note?.textContent).toContain("Waiting for device to reconnect");
+        expect(reclaim?.hasAttribute("disabled")).toBe(true);
+        expect(reclaim?.title).toContain("Reconnect the device");
+      } else {
+        expect(note).toBeNull();
+        expect(reclaim?.hasAttribute("disabled")).toBe(false);
+      }
+    },
+  );
 
   it.each(["local", undefined] as const)(
     "offers worker dispatch for a repository-only session with %s placement",
@@ -199,14 +211,7 @@ describe("chat pane device placement", () => {
       expect(container.querySelector(".chat-pane__placement-chip")?.textContent?.trim()).toBe(
         "Worker required",
       );
-      container.querySelector<HTMLButtonElement>(".chat-pane__placement-chip")!.click();
-      await waitForSolid(() =>
-        expect(
-          container
-            .querySelector('.chat-pane__placement-menu > [role="menu"]')
-            ?.matches(":popover-open"),
-        ).toBe(true),
-      );
+      await openPlacement(container);
       const dispatch = container.querySelector<HTMLButtonElement>(".chat-pane__placement-recovery");
       expect(container.querySelectorAll(".chat-pane__placement-recovery")).toHaveLength(1);
       expect(dispatch?.textContent?.trim()).toBe("Choose worker…");
@@ -216,7 +221,7 @@ describe("chat pane device placement", () => {
     },
   );
 
-  it("offers restart without a redundant stop action after a failed worker is gone", () => {
+  it("offers restart without a redundant stop action after a failed worker is gone", async () => {
     const container = document.createElement("div");
     document.body.append(container);
     containers.push(container);
@@ -237,13 +242,14 @@ describe("chat pane device placement", () => {
 
     mountSolid(() => createComponent(ChatPanePlacement, { session }), { container });
 
+    await openPlacement(container);
     expect(container.querySelector(".chat-pane__placement-recovery")?.textContent?.trim()).toBe(
       "Restart session…",
     );
     expect(container.querySelector(".chat-pane__placement-reclaim")).toBeNull();
   });
 
-  it("requires stop before restart while the failed worker environment may remain", () => {
+  it("requires stop before restart while the failed worker environment may remain", async () => {
     const container = document.createElement("div");
     document.body.append(container);
     containers.push(container);
@@ -264,6 +270,7 @@ describe("chat pane device placement", () => {
 
     mountSolid(() => createComponent(ChatPanePlacement, { session }), { container });
 
+    await openPlacement(container);
     expect(container.querySelector(".chat-pane__placement-recovery")).toBeNull();
     expect(container.querySelector(".chat-pane__placement-reclaim")?.textContent?.trim()).toBe(
       "Stop worker…",

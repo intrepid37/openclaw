@@ -259,6 +259,7 @@ function ProjectCrumb(props: ChatPaneHeaderProps) {
   ];
   return (
     <Menu
+      lazy
       id={id}
       class="chat-pane__workspace-menu"
       placement="bottom-start"
