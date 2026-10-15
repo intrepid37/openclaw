@@ -32,14 +32,6 @@ import {
   sidebarMainPanel,
 } from "./sidebar-layout.ts";
 
-// These shell tests isolate board data and presentation; board rendering has its own suite.
-vi.mock("../../components/board/board-view.tsx", () => {
-  if (!customElements.get("openclaw-board-view")) {
-    customElements.define("openclaw-board-view", class extends HTMLElement {});
-  }
-  return {};
-});
-
 const swarmModuleImport = await vi.hoisted(async () => {
   const { createDeferred } = await import("../../../../test/helpers/promise.js");
   const started = createDeferred();
