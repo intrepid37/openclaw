@@ -46,4 +46,9 @@ export type ResolveEffectiveToolInventoryParams = {
   modelHasVision?: boolean;
   requireExplicitMessageTarget?: boolean;
   disableMessageTool?: boolean;
+  /**
+   * Session-scoped web_search kill switch. When false, the core web_search
+   * tool is excluded (mirrors SessionToolOverrides.webSearch).
+   */
+  webSearchEnabled?: boolean;
 };

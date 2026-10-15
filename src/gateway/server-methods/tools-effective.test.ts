@@ -593,6 +593,53 @@ describe("tools.effective handler", () => {
     expect(runtimeMocks.loadSessionEntry).toHaveBeenCalledOnce();
   });
 
+  it("disables web_search in the inventory when the session override sets webSearch false", async () => {
+    const sessionKey = "agent:main:websearch-override";
+    runtimeMocks.loadSessionEntry.mockReturnValueOnce({
+      cfg: { session: { store: "/tmp/tools-effective-websearch-override/sessions.sqlite" } },
+      agentId: "main",
+      storePath: "/tmp/tools-effective-websearch-override/sessions.sqlite",
+      store: {},
+      canonicalKey: sessionKey,
+      storeKeys: [sessionKey],
+      legacyKey: undefined,
+      entry: {
+        sessionId: "websearch-override-session",
+        updatedAt: 1,
+        toolOverrides: { webSearch: false },
+      },
+    });
+
+    const { respond, invoke } = createInvokeParams({ sessionKey });
+    await invoke();
+
+    expect(firstRespondCall(respond)?.[0]).toBe(true);
+    expect(resolveEffectiveToolInventoryArg(0)?.webSearchEnabled).toBe(false);
+  });
+
+  it("leaves web_search untouched in the inventory without a session webSearch override", async () => {
+    const sessionKey = "agent:main:websearch-default";
+    runtimeMocks.loadSessionEntry.mockReturnValueOnce({
+      cfg: { session: { store: "/tmp/tools-effective-websearch-default/sessions.sqlite" } },
+      agentId: "main",
+      storePath: "/tmp/tools-effective-websearch-default/sessions.sqlite",
+      store: {},
+      canonicalKey: sessionKey,
+      storeKeys: [sessionKey],
+      legacyKey: undefined,
+      entry: {
+        sessionId: "websearch-default-session",
+        updatedAt: 1,
+      },
+    });
+
+    const { respond, invoke } = createInvokeParams({ sessionKey });
+    await invoke();
+
+    expect(firstRespondCall(respond)?.[0]).toBe(true);
+    expect(resolveEffectiveToolInventoryArg(0)?.webSearchEnabled).toBeUndefined();
+  });
+
   it("projects MCP tools from the session-owning native harness catalog", async () => {
     const loaded = runtimeMocks.loadSessionEntry("main:abc");
     runtimeMocks.loadSessionEntry.mockReturnValueOnce({

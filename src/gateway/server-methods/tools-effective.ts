@@ -105,6 +105,8 @@ function buildToolsEffectiveCacheKey(context: TrustedToolsEffectiveContext): str
     groupChannel: optionalCacheString(context.groupChannel),
     groupSpace: optionalCacheString(context.groupSpace),
     replyToMode: optionalCacheString(context.replyToMode),
+    // Session tool overrides can change without a config or session-id change.
+    webSearchOverride: context.toolOverrides?.webSearch === false,
     // Prepared session ceilings can change without a config or session-id change.
     policy: buildConversationToolPolicyPipelineSteps({
       capabilityProfile: context.capabilityProfile,
@@ -285,6 +287,8 @@ async function resolveBaseToolsEffectiveInventory(
         groupChannel: context.groupChannel,
         groupSpace: context.groupSpace,
         replyToMode: context.replyToMode,
+        // Honor the session's saved web_search override in the preview.
+        webSearchEnabled: context.toolOverrides?.webSearch === false ? false : undefined,
       }),
     );
   } finally {
