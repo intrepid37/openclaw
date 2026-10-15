@@ -3,6 +3,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { formatCliCommand } from "../cli/command-format.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+import * as fetchGuard from "../infra/net/fetch-guard.js";
 import * as providerAuthChoices from "../plugins/provider-auth-choices.js";
 import type { ProviderAuthMethod, ProviderPlugin } from "../plugins/types.js";
 import { resolveUserPath } from "../utils.js";
@@ -177,6 +178,7 @@ function mockLocalResetPreflight(params: {
 describe("setupWizardCommand", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
+    vi.restoreAllMocks();
     vi.clearAllMocks();
     mocks.hasInteractiveOnboardingTty.mockReturnValue(true);
     mocks.readConfigFileSnapshot.mockResolvedValue({ exists: false, valid: false, config: {} });
@@ -783,13 +785,43 @@ describe("setupWizardCommand", () => {
     );
   });
 
-  it("validates an inferred custom auth choice before reset", async () => {
-    await expectAuthPreflightError({ customBaseUrl: "https://example.com/v1" }, () =>
-      [
-        'Auth choice "custom-api-key" requires a base URL and model ID.',
-        "Use --custom-base-url and --custom-model-id.",
-      ].join("\n"),
+  it("rejects empty discovery before reset", async () => {
+    vi.spyOn(nonInteractiveApiKeys, "resolveNonInteractiveApiKey").mockResolvedValue(null);
+    vi.spyOn(fetchGuard, "fetchWithSsrFGuard").mockResolvedValue({
+      response: Response.json({ data: [] }),
+      finalUrl: "https://example.com/v1/models",
+      release: async () => {},
+    });
+    await expectAuthPreflightError(
+      { customBaseUrl: "https://example.com/v1" },
+      () =>
+        "No models could be discovered from the custom provider. Check the base URL and credentials, or pass --custom-model-id explicitly.",
     );
+  });
+
+  it("carries discovered model ids through reset without another request", async () => {
+    vi.spyOn(nonInteractiveApiKeys, "resolveNonInteractiveApiKey").mockResolvedValue(null);
+    const request = vi.spyOn(fetchGuard, "fetchWithSsrFGuard").mockResolvedValue({
+      response: Response.json({ data: [{ id: "first" }, { id: "second" }] }),
+      finalUrl: "https://example.com/v1/models",
+      release: async () => {},
+    });
+    const runtime = makeRuntime();
+    await setupWizardCommand(
+      {
+        reset: true,
+        nonInteractive: true,
+        acceptRisk: true,
+        customBaseUrl: "https://example.com/v1",
+      },
+      runtime,
+    );
+    expect(mocks.handleReset).toHaveBeenCalledOnce();
+    expect(mocks.runNonInteractiveSetup).toHaveBeenCalledWith(
+      expect.objectContaining({ customModelIds: ["first", "second"] }),
+      runtime,
+    );
+    expect(request).toHaveBeenCalledOnce();
   });
 
   it("rejects ambiguous interactive provider flags before reset", async () => {

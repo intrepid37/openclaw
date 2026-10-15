@@ -22,6 +22,7 @@ import {
   CustomApiError,
   parseNonInteractiveCustomApiFlags,
   resolveCustomProviderId,
+  resolveNonInteractiveCustomApiModelIds,
 } from "../../onboard-custom-config.js";
 import { rejectOnboardingOption } from "../../onboard-options.js";
 import type { AuthChoice, OnboardOptions } from "../../onboard-types.js";
@@ -209,19 +210,33 @@ export async function applyNonInteractiveAuthChoice(params: {
         }
         customApiKeyInput = stored;
       }
-      const result = applyCustomApiConfig({
+      const modelIds = await resolveNonInteractiveCustomApiModelIds({
+        ...customAuth,
+        apiKey: resolvedCustomApiKey?.key,
+        modelIds: opts.customModelIds,
+      });
+      // Apply the advertised first model last so every model joins the allowlist.
+      const [firstToApply = "", ...remainingModels] = modelIds.toReversed();
+      let result = applyCustomApiConfig({
         config: nextConfig,
-        baseUrl: customAuth.baseUrl,
-        modelId: customAuth.modelId,
-        compatibility: customAuth.compatibility,
+        ...customAuth,
+        modelId: firstToApply,
         apiKey: customApiKeyInput,
-        providerId: customAuth.providerId,
-        supportsImageInput: customAuth.supportsImageInput,
         target: params.target,
       });
-      if (result.providerIdRenamedFrom && result.providerId) {
+      for (const modelId of remainingModels) {
+        result = applyCustomApiConfig({
+          ...customAuth,
+          config: result.config,
+          modelId,
+          apiKey: customApiKeyInput,
+          providerId: result.providerId,
+          target: params.target,
+        });
+      }
+      if (resolvedProviderId.providerIdRenamedFrom) {
         runtime.log(
-          `Custom provider ID "${result.providerIdRenamedFrom}" already exists for a different base URL. Using "${result.providerId}".`,
+          `Custom provider ID "${resolvedProviderId.providerIdRenamedFrom}" already exists for a different base URL. Using "${result.providerId}".`,
         );
       }
       if (customApiKeyInput !== undefined && resolvedCustomApiKey?.source !== "profile") {

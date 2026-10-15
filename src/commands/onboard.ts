@@ -277,6 +277,7 @@ async function validateResetAuthChoice(params: {
       CustomApiError,
       parseNonInteractiveCustomApiFlags,
       resolveCustomProviderId,
+      resolveNonInteractiveCustomApiModelIds,
     } = await import("./onboard-custom-config.js");
     try {
       const custom = parseNonInteractiveCustomApiFlags({
@@ -309,11 +310,17 @@ async function validateResetAuthChoice(params: {
       if (params.opts.customApiKey?.trim() && !customCredential) {
         return false;
       }
+      const modelIds = await resolveNonInteractiveCustomApiModelIds({
+        ...custom,
+        apiKey: customCredential?.key,
+      });
       applyCustomApiConfig({
         ...custom,
+        modelId: modelIds[0] ?? "",
         config: params.baseConfig,
         apiKey: undefined,
       });
+      params.opts.customModelIds = modelIds;
     } catch (error) {
       const message =
         error instanceof CustomApiError &&

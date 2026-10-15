@@ -385,16 +385,76 @@ export function resolveCustomProviderId(params: {
   return { providerId: `${requestedId}-${suffix}`, providerIdRenamedFrom: requestedId };
 }
 
+/** Discovers custom endpoint ids without changing the runtime model catalog. */
+export async function discoverCustomApiModelIds(params: {
+  baseUrl: string;
+  apiKey?: string;
+  headers?: Record<string, string>;
+}): Promise<string[]> {
+  try {
+    const { discoverOpenAICompatibleLocalModels } =
+      await import("../plugins/provider-self-hosted-discovery.js");
+    const isAzure = isAzureUrl(params.baseUrl);
+    const result = await discoverOpenAICompatibleLocalModels({
+      baseUrl: isAzure ? transformAzureConfigUrl(params.baseUrl) : params.baseUrl,
+      apiKey: isAzure ? undefined : params.apiKey,
+      headers: isAzure
+        ? {
+            ...buildOpenAiVerificationProbeRequest({
+              baseUrl: params.baseUrl,
+              apiKey: params.apiKey ?? "",
+              modelId: "",
+            }).headers,
+            ...params.headers,
+          }
+        : params.headers,
+      label: "custom provider",
+      rawResult: true,
+      discoverRuntimeContext: false,
+    });
+    return result.kind === "success"
+      ? [
+          ...new Set(
+            result.rows.flatMap(({ model }) => {
+              const id = normalizeOptionalString(model.id);
+              return id ? [id] : [];
+            }),
+          ),
+        ]
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function resolveNonInteractiveCustomApiModelIds(params: {
+  baseUrl: string;
+  modelId: string;
+  apiKey?: string;
+  modelIds?: string[];
+}): Promise<string[]> {
+  const modelIds = params.modelId
+    ? [params.modelId]
+    : (params.modelIds ?? (await discoverCustomApiModelIds(params)));
+  if (!modelIds.length) {
+    throw new CustomApiError(
+      "missing_required",
+      "No models could be discovered from the custom provider. Check the base URL and credentials, or pass --custom-model-id explicitly.",
+    );
+  }
+  return modelIds;
+}
+
 export function parseNonInteractiveCustomApiFlags(params: ParseNonInteractiveCustomApiFlagsParams) {
   const baseUrl = normalizeOptionalString(params.baseUrl) ?? "";
   const modelId = normalizeOptionalString(params.modelId) ?? "";
-  if (!baseUrl || !modelId) {
+  const compatibility = parseCustomApiCompatibility(params.compatibility);
+  if (!baseUrl || (compatibility === "anthropic" && !modelId)) {
     throw new CustomApiError(
       "missing_required",
-      [
-        'Auth choice "custom-api-key" requires a base URL and model ID.',
-        "Use --custom-base-url and --custom-model-id.",
-      ].join("\n"),
+      !baseUrl
+        ? 'Auth choice "custom-api-key" requires --custom-base-url.'
+        : "Anthropic-compatible custom providers require --custom-model-id.",
     );
   }
 
@@ -404,7 +464,7 @@ export function parseNonInteractiveCustomApiFlags(params: ParseNonInteractiveCus
   return {
     baseUrl,
     modelId,
-    compatibility: parseCustomApiCompatibility(params.compatibility),
+    compatibility,
     ...(apiKey ? { apiKey } : {}),
     ...(providerId ? { providerId } : {}),
     ...(params.supportsImageInput === undefined

@@ -120,7 +120,10 @@ export function registerOnboardAuthOptions(command: Command): Command {
   return command
     .option("--custom-base-url <url>", "Custom provider base URL")
     .option("--custom-api-key <key>", "Custom provider API key (optional)")
-    .option("--custom-model-id <id>", "Custom provider model ID")
+    .option(
+      "--custom-model-id <id>",
+      "Custom provider model ID (omit to discover OpenAI-compatible endpoint models)",
+    )
     .option("--custom-provider-id <id>", "Custom provider ID (optional; auto-derived by default)")
     .option(
       "--custom-compatibility <mode>",

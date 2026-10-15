@@ -352,16 +352,20 @@ on a different release.
     - **Paste API key now** (plaintext)
     - **Use secret reference** (env ref or configured provider ref, with preflight validation)
 
+    For OpenAI-compatible and OpenAI Responses-compatible endpoints, setup queries the base URL's `/models` endpoint (usually `/v1/models`) with the supplied API key. Pick a discovered model or enter a model ID manually. The selected model is saved. If discovery fails, times out, or returns no usable models, setup falls back to manual entry.
+
     Onboarding infers image support for common vision model IDs (GPT-4o/4.1/5.x, Claude 3/4, Gemini, Qwen-VL, LLaVA, Pixtral, and similar) and only asks when the model name is unknown.
 
     Non-interactive flags:
     - `--auth-choice custom-api-key`
     - `--custom-base-url`
-    - `--custom-model-id`
+    - `--custom-model-id` (optional for `openai` / `openai-responses`; required for `anthropic`)
     - `--custom-api-key` (optional; falls back to `CUSTOM_API_KEY`)
     - `--custom-provider-id` (optional)
     - `--custom-compatibility <openai|openai-responses|anthropic>` (optional; default `openai`)
     - `--custom-image-input` / `--custom-text-input` (optional; override inferred model input capability)
+
+    Without `--custom-model-id`, non-interactive OpenAI-compatible setup saves the discovered list and selects its first model as the default. An explicit ID skips discovery. If discovery fails or returns no usable models, rerun with an explicit ID.
 
   </Accordion>
   <Accordion title="Skip">

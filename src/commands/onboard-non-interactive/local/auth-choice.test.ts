@@ -1,7 +1,8 @@
 // Non-interactive auth-choice tests cover built-in, custom, deprecated, and plugin provider dispatch.
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OpenClawConfig } from "../../../config/config.js";
 import { resolveAgentModelPrimaryValue } from "../../../config/model-input.js";
+import * as fetchGuard from "../../../infra/net/fetch-guard.js";
 import { ExitError } from "../../../runtime.js";
 import * as apiProviderAuthChoices from "../../auth-choice.apply.api-providers.js";
 import { commitNonInteractiveOnboardConfig } from "../config-write.js";
@@ -57,6 +58,10 @@ beforeEach(() => {
   resolveManifestProviderAuthChoices.mockReturnValue([]);
   resolveDeprecatedProviderInstallCatalogEntry.mockReset();
   resolveDeprecatedProviderInstallCatalogEntry.mockReturnValue(undefined);
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 function createRuntime() {
@@ -187,6 +192,157 @@ describe("applyNonInteractiveAuthChoice", () => {
     );
     expect(runtime.exit).toHaveBeenCalledWith(1);
     expect(applyNonInteractivePluginProviderChoice).not.toHaveBeenCalled();
+  });
+
+  it.each(["openai", "openai-responses"] as const)(
+    "imports discovered %s models and keeps authored metadata",
+    async (compatibility) => {
+      const request = vi.spyOn(fetchGuard, "fetchWithSsrFGuard").mockResolvedValue({
+        response: Response.json({
+          data: [
+            { id: " local-large " },
+            { id: "local-small" },
+            { id: "local-large" },
+            { id: " " },
+            { id: 7 },
+          ],
+        }),
+        finalUrl: "https://models.custom.local/v1/models",
+        release: async () => {},
+      });
+      resolveNonInteractiveApiKey.mockResolvedValueOnce({
+        key: "fixture-discovery-key",
+        source: "env",
+        envVarName: "CUSTOM_API_KEY",
+      });
+      const authored = {
+        id: "local-large",
+        name: "Authored",
+        contextWindow: 65_536,
+        maxTokens: 2048,
+        reasoning: true,
+        input: ["text" as const],
+        cost: { input: 1, output: 2, cacheRead: 0, cacheWrite: 0 },
+      };
+      const result = await applyChoice({
+        nextConfig: {
+          models: {
+            providers: {
+              local: {
+                baseUrl: "https://models.custom.local/v1",
+                models: [authored],
+              },
+            },
+          },
+        },
+        opts: {
+          customBaseUrl: "https://models.custom.local/v1",
+          customProviderId: "local",
+          customCompatibility: compatibility,
+        },
+      });
+      expect(result?.models?.providers?.local?.models).toEqual([
+        authored,
+        expect.objectContaining({ id: "local-small" }),
+      ]);
+      expect(resolveAgentModelPrimaryValue(result?.agents?.defaults?.model)).toBe(
+        "local/local-large",
+      );
+      expect(result?.agents?.defaults?.models).toMatchObject({
+        "local/local-large": {},
+        "local/local-small": {},
+      });
+      expect(request).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          url: "https://models.custom.local/v1/models",
+          init: { headers: { Authorization: "Bearer fixture-discovery-key" } },
+        }),
+      );
+    },
+  );
+
+  it.each([
+    Response.json({ data: [] }),
+    Response.json({ models: [] }),
+    new Response("unavailable", { status: 503 }),
+  ])("requires a manual model when discovery returns no usable ids (%#)", async (response) => {
+    vi.spyOn(fetchGuard, "fetchWithSsrFGuard").mockResolvedValue({
+      response,
+      finalUrl: "https://models.custom.local/v1/models",
+      release: async () => {},
+    });
+    const result = await applyChoice({ opts: { customBaseUrl: "https://models.custom.local/v1" } });
+    expect(result).toBeNull();
+    expect(runtime.error).toHaveBeenCalledWith(
+      "No models could be discovered from the custom provider. Check the base URL and credentials, or pass --custom-model-id explicitly.",
+    );
+    expect(runtime.exit).toHaveBeenCalledWith(1);
+  });
+
+  it("uses model ids prepared before reset without rediscovery", async () => {
+    const request = vi.spyOn(fetchGuard, "fetchWithSsrFGuard");
+    const result = await applyChoice({
+      opts: {
+        customBaseUrl: "https://models.custom.local/v1",
+        customModelIds: ["first", "second"],
+      },
+    });
+    expect(
+      result?.models?.providers?.["custom-models-custom-local"]?.models.map((model) => model.id),
+    ).toEqual(["second", "first"]);
+    expect(resolveAgentModelPrimaryValue(result?.agents?.defaults?.model)).toBe(
+      "custom-models-custom-local/first",
+    );
+    expect(result?.agents?.defaults?.models).toMatchObject({
+      "custom-models-custom-local/first": {},
+      "custom-models-custom-local/second": {},
+    });
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it("keeps discovered models together when a provider id collides", async () => {
+    vi.spyOn(fetchGuard, "fetchWithSsrFGuard").mockResolvedValue({
+      response: Response.json({ data: [{ id: "first" }, { id: "second" }] }),
+      finalUrl: "https://models.custom.local/v1/models",
+      release: async () => {},
+    });
+    const result = await applyChoice({
+      nextConfig: {
+        models: {
+          providers: {
+            local: {
+              baseUrl: "https://other.example/v1",
+              models: [],
+            },
+          },
+        },
+      },
+      opts: { customBaseUrl: "https://models.custom.local/v1", customProviderId: "local" },
+    });
+    expect(Object.keys(result?.models?.providers ?? {})).toEqual(["local", "local-2"]);
+    expect(result?.models?.providers?.["local-2"]?.models.map((model) => model.id)).toEqual([
+      "second",
+      "first",
+    ]);
+    expect(resolveAgentModelPrimaryValue(result?.agents?.defaults?.model)).toBe("local-2/first");
+    expect(result?.agents?.defaults?.models).toMatchObject({
+      "local-2/first": {},
+      "local-2/second": {},
+    });
+  });
+
+  it("keeps an explicit model authoritative without discovering", async () => {
+    const request = vi.spyOn(fetchGuard, "fetchWithSsrFGuard");
+    const result = await applyChoice({
+      opts: {
+        customBaseUrl: "https://models.custom.local/v1",
+        customModelId: "manual-model",
+      },
+    });
+    expect(result?.models?.providers?.["custom-models-custom-local"]?.models).toEqual([
+      expect.objectContaining({ id: "manual-model" }),
+    ]);
+    expect(request).not.toHaveBeenCalled();
   });
 
   it("stores custom provider env refs through the local auth-choice seam", async () => {
