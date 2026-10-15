@@ -52,6 +52,7 @@ it.each([
   const details = notice.querySelector<HTMLDetailsElement>("details")!;
   const body = notice.querySelector<HTMLElement>(".chat-notice__body")!;
   const metric = notice.querySelector<HTMLElement>(".chat-divider__metric")!;
+  const header = notice.querySelector<HTMLElement>(".chat-divider__label")!;
   const toggle = view.getByText("Show content");
 
   await expect.element(view.getByText(label)).toBeVisible();
@@ -65,11 +66,20 @@ it.each([
   await userEvent.keyboard("{Enter}");
   expect(details.open).toBe(true);
   await expect.element(body).toBeVisible();
+  await expect.element(view.getByText("Hide content")).toBeVisible();
   expect(body.textContent?.trim()).toBe("Check the rollback path before continuing.");
   expect(body.querySelector("strong")?.textContent).toBe("rollback path");
   expect(notice.scrollWidth).toBeLessThanOrEqual(notice.clientWidth);
+  const textRange = document.createRange();
+  textRange.selectNodeContents(body.querySelector("p")!);
+  const textBounds = textRange.getBoundingClientRect();
+  const headerBounds = header.getBoundingClientRect();
+  const textCenter = textBounds.left + textBounds.width / 2;
+  const headerCenter = headerBounds.left + headerBounds.width / 2;
+  expect(Math.abs(textCenter - headerCenter)).toBeLessThanOrEqual(1);
 
-  await userEvent.click(toggle);
+  await userEvent.click(view.getByText("Hide content"));
   expect(details.open).toBe(false);
   await expect.element(body).not.toBeVisible();
+  await expect.element(view.getByText("Show content")).toBeVisible();
 });

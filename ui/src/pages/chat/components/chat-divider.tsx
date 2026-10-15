@@ -1,4 +1,4 @@
-import { createMemo, Match, Show, Switch } from "solid-js";
+import { createMemo, createSignal, Match, Show, Switch } from "solid-js";
 import type { NodePermissionRequest } from "../../../../../packages/gateway-protocol/src/node-permissions.js";
 import { Icon } from "../../../components/solid/icon.tsx";
 import { MarkdownHtml } from "../../../components/solid/markdown-html.tsx";
@@ -148,6 +148,7 @@ function NoticeBody(props: { text: string }) {
 }
 
 function OrdinaryNotice(props: ChatNoticeProps) {
+  const [expanded, setExpanded] = createSignal(false);
   return (
     <div
       class={[
@@ -173,8 +174,13 @@ function OrdinaryNotice(props: ChatNoticeProps) {
           </Show>
         }
       >
-        <details class="chat-notice__collapse">
-          <summary class="chat-notice__toggle">{t("chat.systemNotice.showContent")}</summary>
+        <details
+          class="chat-notice__collapse"
+          onToggle={(event) => setExpanded(event.currentTarget.open)}
+        >
+          <summary class="chat-notice__toggle">
+            {t(expanded() ? "chat.systemNotice.hideContent" : "chat.systemNotice.showContent")}
+          </summary>
           <NoticeBody text={props.item.text} />
         </details>
       </Show>

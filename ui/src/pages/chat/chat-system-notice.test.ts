@@ -167,6 +167,34 @@ describe("system notices through pending-to-history promotion", () => {
     },
   );
 
+  it.each(["cli_harness_context", "claude_cli_task_notification", "plugin:review-helper"])(
+    "keeps %s between tool groups without starting a turn",
+    (sourceTool) => {
+      const call = (id: string) => ({
+        role: "assistant",
+        content: [{ type: "toolCall", id, name: "read", arguments: { path: `${id}.ts` } }],
+        timestamp: 999,
+        __openclaw: { runId: "same-run" },
+      });
+      const items = render(
+        [
+          call("before"),
+          { ...baseMessage, provenance: { kind: "internal_system", sourceTool } },
+          call("after"),
+        ],
+        [],
+      );
+      expect(items).toMatchObject([
+        { kind: "group", role: "tool" },
+        { kind: "notice", collapsedBody: true },
+        { kind: "group", role: "tool" },
+      ]);
+      const notice = items[1]!;
+      expect(chatItemStartsUserTurn(notice)).toBe(false);
+      expect(chatItemStartsDisplayTurn(notice)).toBe(false);
+    },
+  );
+
   it("keeps a user's System prefix and sender attribution through promotion", () => {
     const inputs = pending(baseMessage);
     for (const consumed of [false, true]) {

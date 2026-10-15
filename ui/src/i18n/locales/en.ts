@@ -3379,6 +3379,7 @@ export const en: TranslationMap & {
         label: "{plugin} steered this run",
       },
       showContent: "Show content",
+      hideContent: "Hide content",
     },
     skillLearned: {
       label: "Learned",

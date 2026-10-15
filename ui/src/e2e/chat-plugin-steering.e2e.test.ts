@@ -138,6 +138,7 @@ suite.define(() => {
           await toggle.click();
           await body.waitFor();
           expect(await disclosure.getAttribute("open")).not.toBeNull();
+          await expect.poll(() => toggle.textContent()).toBe("Hide content");
           expect((await body.textContent())?.trim()).toBe(displayText);
           expect(await userBubbles.count()).toBe(1);
           await expect
@@ -153,9 +154,26 @@ suite.define(() => {
               }),
             )
             .toBe(true);
+          expect(
+            await notice.evaluate((element) => {
+              const noticeBody = element.querySelector(".chat-notice__body");
+              const label = element.querySelector(".chat-divider__label");
+              if (!noticeBody || !label) {
+                throw new Error("Expected a notice body and label");
+              }
+              const text = document.createRange();
+              text.selectNodeContents(noticeBody.querySelector("p") ?? noticeBody);
+              const bodyBounds = text.getBoundingClientRect();
+              const labelBounds = label.getBoundingClientRect();
+              return Math.abs(
+                bodyBounds.left + bodyBounds.width / 2 - labelBounds.left - labelBounds.width / 2,
+              );
+            }),
+          ).toBeLessThanOrEqual(1);
           await toggle.click();
           await body.waitFor({ state: "hidden" });
           expect(await disclosure.getAttribute("open")).toBeNull();
+          await expect.poll(() => toggle.textContent()).toBe("Show content");
 
           const workSummaries = pane.locator(
             ".chat-activity-group > .chat-activity-group__summary",
