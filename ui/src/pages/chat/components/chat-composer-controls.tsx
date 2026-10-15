@@ -1,4 +1,6 @@
 import { Show, createMemo, createUniqueId } from "solid-js";
+// Unported header menus still need the shared dropdown registration.
+import "../../../components/web-awesome.ts";
 import type { ChatFollowUpMode } from "../../../app/settings.ts";
 import { Icon } from "../../../components/solid/icon.tsx";
 import { Kbd } from "../../../components/solid/kbd.tsx";
