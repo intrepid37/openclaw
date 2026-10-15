@@ -98,7 +98,7 @@ describe("Feishu model-wait card lifecycle", () => {
     try {
       await dispatcher.dispatcherOptions.onReplyStart?.();
       if (previousText) {
-        dispatcher.replyOptions.onPartialReply?.({ text: previousText });
+        await dispatcher.replyOptions.onPartialReply?.({ text: previousText });
         await dispatcher.replyOptions.onItemEvent?.({
           itemId: "existing-work",
           kind: "tool",

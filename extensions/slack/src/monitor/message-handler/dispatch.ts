@@ -122,6 +122,7 @@ async function dispatchSlackMessageWithSetup(
   // Slack drops the status row.
   setup.threadStatusGate.hasVisibleOutput = () =>
     delivery.observedReplyDelivery ||
+    Boolean(delivery.streamSession?.delivered) ||
     previewLifecycle.previewFinalized ||
     Boolean(draftStream?.messageId());
   const failureNoticeThreadTs = message.thread_ts;
@@ -146,7 +147,11 @@ async function dispatchSlackMessageWithSetup(
       return payload;
     }
     sawTerminalFailurePayload = true;
-    if (delivery.observedReplyDelivery || previewLifecycle.previewFinalized) {
+    if (
+      delivery.observedReplyDelivery ||
+      delivery.streamSession?.delivered ||
+      previewLifecycle.previewFinalized
+    ) {
       return payload;
     }
 

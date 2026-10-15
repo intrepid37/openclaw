@@ -142,6 +142,36 @@ it("preserves error-turn media after a later reply", () => {
   ]);
 });
 
+it.each([
+  "[assistant turn failed before producing content]",
+  "Context overflow: prompt too large for the model. Try /reset (or /new) to start a fresh session, or use a larger-context model.",
+])("preserves directive-backed media after %s", (failureText) => {
+  const directive = "MEDIA:https://example.com/result.png";
+  const failed = assistant({
+    content: [text(`${failureText}\n${directive}`)],
+    stopReason: "error",
+    __openclaw: { runId: "media-recovery" },
+  });
+  const recovered = assistant({
+    stopReason: "stop",
+    __openclaw: { runId: "media-recovery" },
+  });
+  const notice = {
+    role: "custom",
+    customType: "run-failed-before-reply",
+    content: "The request failed after retries.",
+    details: { runId: "media-recovery" },
+  };
+  for (const terminal of [recovered, notice]) {
+    const projected = project([failed, terminal]);
+    expect(projected).toHaveLength(2);
+    expect(projected[0]).toMatchObject({
+      content: [{ type: "text", text: expect.stringContaining(directive) }],
+    });
+    expect(projected[0]).not.toHaveProperty("stopReason");
+  }
+});
+
 const managedUrl = "./attachment-catalog-tiny/demo.jpg";
 const delivery = { mediaUrls: [managedUrl] };
 it.each([["LF", "\n"]])(

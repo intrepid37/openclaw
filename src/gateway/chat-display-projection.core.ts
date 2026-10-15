@@ -254,14 +254,19 @@ function sanitizeAssistantErrorDisplayMessage(
   return next;
 }
 
-function isPureStreamErrorFallbackAssistantMessage(message: Record<string, unknown>): boolean {
+function isPureStreamErrorFallbackAssistantMessage(
+  message: Record<string, unknown>,
+  parsedReply?: ReturnType<typeof extractAssistantReplyDirectives>,
+): boolean {
   if (message.role !== "assistant" || message.stopReason !== "error") {
     return false;
   }
-  const text = extractAssistantReplyDirectives(message)?.text;
+  const reply = parsedReply ?? extractAssistantReplyDirectives(message);
   return (
-    text !== undefined &&
-    text.trim() === STREAM_ERROR_FALLBACK_TEXT &&
+    reply !== undefined &&
+    reply.text.trim() === STREAM_ERROR_FALLBACK_TEXT &&
+    !reply.mediaUrls?.length &&
+    !reply.mediaFailures?.length &&
     !hasAssistantNonTextContent(message) &&
     !hasTranscriptMediaFacts(message)
   );
@@ -310,20 +315,25 @@ function hasVisibleAssistantReplyText(message: Record<string, unknown>): boolean
 
 function isDiagnosticOnlyAssistantError(value: unknown): boolean {
   const message = asOptionalRecord(value);
+  if (
+    message?.role !== "assistant" ||
+    message.display === false ||
+    message.stopReason !== "error"
+  ) {
+    return false;
+  }
+  const reply = extractAssistantReplyDirectives(message);
   return (
-    message?.role === "assistant" &&
-    message.display !== false &&
-    message.stopReason === "error" &&
-    (isPureStreamErrorFallbackAssistantMessage(message) ||
+    !reply?.mediaUrls?.length &&
+    !reply?.mediaFailures?.length &&
+    (isPureStreamErrorFallbackAssistantMessage(message, reply) ||
       (Boolean(readSessionTranscriptRunId(message)) &&
         !hasAssistantDisplayableNonTextContent(message) &&
         !hasTranscriptMediaFacts(message) &&
         (!hasVisibleAssistantDisplayContent(message) ||
           // Older projections stored the host error copy as assistant text. It
           // is diagnostic-only, but partial answers and media must stay visible.
-          extractAssistantReplyDirectives(message)
-            ?.text.trim()
-            .replace(/^⚠️\s*/u, "") === CONTEXT_OVERFLOW_ERROR_MESSAGE)))
+          reply?.text.trim().replace(/^⚠️\s*/u, "") === CONTEXT_OVERFLOW_ERROR_MESSAGE)))
   );
 }
 

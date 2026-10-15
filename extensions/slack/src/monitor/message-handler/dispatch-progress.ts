@@ -179,7 +179,6 @@ export function createSlackProgressRuntime(runtimeParams: {
         nativeNarration = narrationUpdate.next;
       }
       nativeProgressCompletionSent = true;
-      delivery.observedReplyDelivery ||= session.delivered;
     } catch (err) {
       delivery.streamFailed = true;
       runtime.error?.(

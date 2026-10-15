@@ -278,7 +278,6 @@ export function createSlackStreamingDeliveryRuntime(setup: SlackDispatchSetup) {
         try {
           const stopped = await stopStream(session, chunks);
           messageId = stopped.messageId ?? messageId;
-          state.observedReplyDelivery ||= !discardPreview && session.delivered;
         } catch (error) {
           if (discardPreview || !(error instanceof SlackStreamNotDeliveredError)) {
             throw error;
@@ -291,6 +290,7 @@ export function createSlackStreamingDeliveryRuntime(setup: SlackDispatchSetup) {
       }
     }
     if (!discardPreview) {
+      state.observedReplyDelivery ||= session.delivered;
       return;
     }
     try {
@@ -298,6 +298,7 @@ export function createSlackStreamingDeliveryRuntime(setup: SlackDispatchSetup) {
         await deleteSlackMessage(session.channel, messageId, { client: slackClient });
       }
     } catch (error) {
+      state.observedReplyDelivery ||= session.delivered;
       runtime.error?.(danger(`slack-stream: preview deletion failed: ${formatSlackError(error)}`));
     }
     state.streamSession = null;

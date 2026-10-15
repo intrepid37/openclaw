@@ -16,7 +16,6 @@ export function createSlackNativeProgressTransport(params: {
     if (!session?.delivered) {
       return false;
     }
-    delivery.observedReplyDelivery = true;
     if (threadTs) {
       delivery.rememberDeliveredThreadTs("block", threadTs);
     }

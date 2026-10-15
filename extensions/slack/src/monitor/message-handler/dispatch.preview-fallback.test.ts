@@ -72,6 +72,7 @@ const normalizeSlackOutboundTextMock = vi.fn((value: string) => value.trim());
 const postMessageMock = vi.fn(async () => ({ ok: true, ts: "171234.999" }));
 const chatUpdateMock = vi.fn(async () => ({ ok: true, ts: "171234.999" }));
 const recordSlackThreadParticipationMock = vi.fn();
+const deleteSlackMessageMock = vi.fn(async () => {});
 const updateLastRouteMock = vi.hoisted(() => vi.fn(async () => {}));
 const appendSlackStreamMock = vi.fn(async (_input?: unknown) => {});
 const startSlackStreamMock = vi.fn(async (_input?: unknown) => ({
@@ -536,6 +537,7 @@ vi.mock("openclaw/plugin-sdk/security-runtime", () => ({
 }));
 
 vi.mock("../../actions.js", () => ({
+  deleteSlackMessage: deleteSlackMessageMock,
   reactSlackMessage: reactSlackMessageMock,
   removeSlackReaction: removeSlackReactionMock,
 }));
@@ -806,6 +808,7 @@ describe("dispatchPreparedSlackMessage preview fallback", () => {
     postMessageMock.mockClear();
     chatUpdateMock.mockClear();
     recordSlackThreadParticipationMock.mockReset();
+    deleteSlackMessageMock.mockReset();
     updateLastRouteMock.mockReset();
     appendSlackStreamMock.mockReset();
     startSlackStreamMock.mockReset();
@@ -2166,6 +2169,49 @@ describe("dispatchPreparedSlackMessage preview fallback", () => {
       ],
     });
   });
+
+  it.each([
+    { earlierReply: false, deletionFails: false, delivered: false },
+    { earlierReply: true, deletionFails: false, delivered: true },
+    { earlierReply: false, deletionFails: true, delivered: true },
+  ])(
+    "settles native preview delivery evidence (earlier=$earlierReply, deletion fails=$deletionFails)",
+    async ({ earlierReply, deletionFails, delivered }) => {
+      mockedNativeStreaming = true;
+      if (deletionFails) {
+        deleteSlackMessageMock.mockRejectedValueOnce(new Error("deletion failed"));
+      }
+      mockedDispatchSequence = [
+        ...(earlierReply
+          ? [
+              { kind: "final" as const, payload: { text: "Earlier accepted reply." } },
+              { kind: "queued_followup" as const },
+            ]
+          : []),
+        { kind: "item", progressText: "Provisional reasoning." },
+        checkpoint(async () => {
+          await capturedReplyOptions?.onPartialReply?.({ text: "", replace: true });
+        }),
+      ];
+
+      await dispatch({
+        accountConfig: progressAccount({ toolProgress: true, nativeTaskCards: true }),
+        cfg: { messages: { statusReactions: { enabled: true } } },
+        ackReactionMessageTs: "171234.111",
+        ackReactionPromise: Promise.resolve(true),
+      });
+
+      expect(startSlackStreamMock).toHaveBeenCalledOnce();
+      expect(deleteSlackMessageMock).toHaveBeenCalledExactlyOnceWith(
+        "C123",
+        STREAM_MESSAGE_TS,
+        expect.objectContaining({ client: expect.any(Object) }),
+      );
+      expect(statusReactionControllerMock.setDone).toHaveBeenCalledTimes(delivered ? 1 : 0);
+      expect(recordSlackThreadParticipationMock).toHaveBeenCalledTimes(delivered ? 1 : 0);
+      expect(deliverRepliesMock).toHaveBeenCalledTimes(earlierReply ? 1 : 0);
+    },
+  );
 
   it("re-arms an isolated progress draft on an assistant boundary after final delivery", async () => {
     const draftStream = useDraftStream();
