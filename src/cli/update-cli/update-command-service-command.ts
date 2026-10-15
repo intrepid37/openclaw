@@ -272,7 +272,7 @@ export async function runUpdatedInstallGatewayCommand(
                 ? {
                     originalDefinition: params.originalManagedServiceRuntime.definition.fingerprint,
                     originalRuntimePin:
-                      params.originalManagedServiceRuntime.definition.runtimePin.revision,
+                      params.originalManagedServiceRuntime.definition.runtimePin?.revision,
                   }
                 : {}),
               targetRoot: resolveUpdateInstallRoot(params.result.root!),
@@ -337,7 +337,7 @@ export async function runUpdatedInstallGatewayCommand(
       receipt?.before === original.definition.fingerprint &&
       typeof receipt.after === "string" &&
       /^[a-f0-9]{64}$/.test(receipt.after) &&
-      receipt.runtimePinBefore === original.definition.runtimePin.revision &&
+      receipt.runtimePinBefore === original.definition.runtimePin?.revision &&
       typeof receipt.runtimePinAfter === "string" &&
       /^[a-f0-9]{64}$/.test(receipt.runtimePinAfter)
     ) {
