@@ -337,4 +337,29 @@ describe("oMLX setup through the inference catalog", () => {
     });
     expect(ctx.toApiKeyCredential).not.toHaveBeenCalled();
   });
+
+  it("retains existing configured credentials on a noninteractive rerun", async () => {
+    const fetchMock = fixture();
+    const ctx = nonInteractiveContext();
+    ctx.config = {
+      models: {
+        providers: {
+          omlx: {
+            baseUrl: "http://127.0.0.1:8000/v1",
+            apiKey: "existing-fixture-key",
+            models: [],
+          },
+        },
+      },
+    };
+    const result = await configureOmlxNonInteractive(ctx);
+    expect(result?.models?.providers?.omlx?.apiKey).toBe("existing-fixture-key");
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        headers: { Authorization: "Bearer existing-fixture-key" },
+      }),
+    );
+    expect(ctx.toApiKeyCredential).not.toHaveBeenCalled();
+  });
 });

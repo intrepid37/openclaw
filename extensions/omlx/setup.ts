@@ -199,7 +199,11 @@ export async function configureOmlxNonInteractive(
   }
   config.models.providers.omlx = {
     ...listing.provider,
-    apiKey: resolved ? OMLX_API_KEY_ENV_VAR : OMLX_LOCAL_API_KEY,
+    apiKey: resolved
+      ? resolved.key === OMLX_LOCAL_API_KEY
+        ? OMLX_LOCAL_API_KEY
+        : OMLX_API_KEY_ENV_VAR
+      : listing.provider.apiKey,
   };
   return config;
 }
