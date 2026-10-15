@@ -415,134 +415,20 @@ describe("normalizePluginDiscoveryResult", () => {
         },
       },
     },
-    {
-      name: "skips unreadable multi-provider entries while preserving healthy siblings",
-      provider: makeProvider({ id: "ignored" }),
-      result: {
-        providers: Object.defineProperty(
-          {
-            healthy: makeModelProviderConfig({
-              baseUrl: "http://healthy.example/v1",
-            }),
-          },
-          "broken",
-          {
-            enumerable: true,
-            get() {
-              throw new Error("provider row read failed");
-            },
-          },
-        ) as Record<string, ModelProviderConfig>,
-      },
-      expected: {
-        healthy: {
-          baseUrl: "http://healthy.example/v1",
-          models: [],
-        },
-      },
-    },
-    {
-      name: "skips providers with unreadable required fields",
-      provider: makeProvider({ id: "ignored" }),
-      result: {
-        providers: {
-          broken: Object.defineProperty(
-            makeModelProviderConfig({
-              baseUrl: "http://broken.example/v1",
-              models: [makeModel("broken-model")],
-            }),
-            "baseUrl",
-            {
-              enumerable: true,
-              get() {
-                throw new Error("provider baseUrl read failed");
-              },
-            },
-          ),
-          healthy: makeModelProviderConfig({
-            baseUrl: "http://healthy.example/v1",
-            models: [makeModel("healthy-model")],
-          }),
-        },
-      },
-      expected: {
-        healthy: {
-          baseUrl: "http://healthy.example/v1",
-          models: [makeModel("healthy-model")],
-        },
-      },
-    },
-    {
-      name: "skips unreadable model rows while preserving healthy siblings",
-      provider: makeProvider({ id: "ignored" }),
-      result: {
-        providers: {
-          healthy: makeModelProviderConfig({
-            baseUrl: "http://healthy.example/v1",
-            models: Object.defineProperty([makeModel("healthy-model")], "1", {
-              enumerable: true,
-              get() {
-                throw new Error("model row read failed");
-              },
-            }),
-          }),
-        },
-      },
-      expected: {
-        healthy: {
-          baseUrl: "http://healthy.example/v1",
-          models: [makeModel("healthy-model")],
-        },
-      },
-    },
-    {
-      name: "skips model rows with unreadable required fields",
-      provider: makeProvider({ id: "ignored" }),
-      result: {
-        providers: {
-          healthy: makeModelProviderConfig({
-            baseUrl: "http://healthy.example/v1",
-            models: [
-              Object.defineProperty(makeModel("broken-model"), "id", {
-                enumerable: true,
-                get() {
-                  throw new Error("model id read failed");
-                },
-              }),
-              makeModel("healthy-model"),
-            ],
-          }),
-        },
-      },
-      expected: {
-        healthy: {
-          baseUrl: "http://healthy.example/v1",
-          models: [makeModel("healthy-model")],
-        },
-      },
-    },
-    {
-      name: "keeps minimal model rows with id-only labels",
-      provider: makeProvider({ id: "ignored" }),
-      result: {
-        providers: {
-          healthy: makeModelProviderConfig({
-            baseUrl: "http://healthy.example/v1",
-            models: [{ id: "local-tiny" } as ModelDefinitionConfig],
-          }),
-        },
-      },
-      expected: {
-        healthy: {
-          baseUrl: "http://healthy.example/v1",
-          models: [{ id: "local-tiny", name: "local-tiny" }],
-        },
-      },
-    },
   ];
 
   it.each(cases)("$name", ({ provider, result, expected }) => {
     expectNormalizedDiscoveryResult({ provider, result, expected });
+  });
+
+  it("retains the catalog's provider config and model references", () => {
+    const config = makeModelProviderConfig({ models: [makeModel("demo")] });
+    const normalized = normalizePluginDiscoveryResult({
+      provider: makeProvider({ id: "demo" }),
+      result: { provider: config },
+    });
+    expect(normalized.demo).toBe(config);
+    expect(normalized.demo?.models).toBe(config.models);
   });
 });
 

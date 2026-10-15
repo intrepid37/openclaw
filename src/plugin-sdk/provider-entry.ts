@@ -365,7 +365,7 @@ async function runUnifiedTextCatalog(params: {
 }): Promise<UnifiedModelCatalogEntry[]> {
   const result = await params.catalog.run(params.ctx);
   const rows: UnifiedModelCatalogEntry[] = [];
-  // Consume the copier's validated records without copying the catalog again.
+  // Loaded plugins transfer catalog values by reference.
   for (const [providerId, providerConfig] of copyProviderCatalogResultEntries({
     providerId: params.providerId,
     result,

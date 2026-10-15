@@ -1,8 +1,7 @@
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
-import type { ModelDefinitionConfig, ModelProviderConfig } from "../config/types.js";
+import type { ModelProviderConfig } from "../config/types.js";
 import {
   copyArrayEntries,
-  copyRecordEntries,
   isRecordWithoutThrowing,
   readRecordValue,
 } from "../shared/safe-record.js";
@@ -14,61 +13,23 @@ const PROVIDER_CATALOG_OUTCOME_STATUSES = new Set<ProviderCatalogOutcome["status
   "unavailable",
 ]);
 
-const MODEL_PROVIDER_CONFIG_KEYS = [
-  "apiKey",
-  "auth",
-  "api",
-  "maxTokens",
-  "timeoutSeconds",
-  "region",
-  "injectNumCtxForOpenAICompat",
-  "params",
-  "agentRuntime",
-  "localService",
-  "headers",
-  "authHeader",
-  "request",
-] as const satisfies readonly (keyof ModelProviderConfig)[];
-
-const MODEL_DEFINITION_CONFIG_KEYS = [
-  "api",
-  "baseUrl",
-  "reasoning",
-  "input",
-  "cost",
-  "contextWindow",
-  "contextTokens",
-  "maxTokens",
-  "thinkingLevelMap",
-  "params",
-  "agentRuntime",
-  "headers",
-  "compat",
-  "mediaInput",
-  "metadataSource",
-] as const satisfies readonly (keyof ModelDefinitionConfig)[];
-
 /** Projection of a provider catalog result into provider config entries. */
 type ProviderCatalogResultProjection =
   | { kind: "provider"; provider: ModelProviderConfig }
   | { kind: "providers"; providers: Array<[string, ModelProviderConfig]> }
   | { kind: "empty" };
 
-/** Copies provider config data out of a provider catalog result. */
+/** Catalog hooks transfer their typed provider configs by reference. */
 export function copyProviderCatalogResultProjection(
   result: ProviderCatalogResult,
 ): ProviderCatalogResultProjection {
-  const provider = copyProviderCatalogProviderConfig(readRecordValue(result, "provider"));
-  if (provider) {
-    return { kind: "provider", provider };
+  if (!result) {
+    return { kind: "empty" };
   }
-
-  const providers = copyRecordEntries<ModelProviderConfig>(
-    readRecordValue(result, "providers"),
-  ).flatMap(([providerId, providerConfig]) => {
-    const copied = copyProviderCatalogProviderConfig(providerConfig);
-    return copied ? [[providerId, copied] as [string, ModelProviderConfig]] : [];
-  });
+  if ("provider" in result) {
+    return { kind: "provider", provider: result.provider };
+  }
+  const providers = Object.entries(result.providers);
   return providers.length > 0 ? { kind: "providers", providers } : { kind: "empty" };
 }
 
@@ -185,56 +146,4 @@ export function copyProviderCatalogResultEntries(params: {
     return [[params.providerId, projection.provider]];
   }
   return projection.kind === "providers" ? projection.providers : [];
-}
-
-function copyProviderCatalogModel(model: unknown): ModelDefinitionConfig | undefined {
-  if (!isRecordWithoutThrowing(model)) {
-    return undefined;
-  }
-  const id = readRecordValue(model, "id");
-  const name = readRecordValue(model, "name");
-  if (typeof id !== "string") {
-    return undefined;
-  }
-
-  const copied: Partial<ModelDefinitionConfig> = {
-    id,
-    name: typeof name === "string" ? name : id,
-  };
-  for (const key of MODEL_DEFINITION_CONFIG_KEYS) {
-    const value = readRecordValue(model, key);
-    if (value !== undefined) {
-      (copied as Record<string, unknown>)[key] = value;
-    }
-  }
-  return copied as ModelDefinitionConfig;
-}
-
-/** Copies the supported provider config fields from a provider catalog result. */
-function copyProviderCatalogProviderConfig(
-  providerConfig: unknown,
-): ModelProviderConfig | undefined {
-  if (!isRecordWithoutThrowing(providerConfig)) {
-    return undefined;
-  }
-
-  const baseUrl = readRecordValue(providerConfig, "baseUrl");
-  if (typeof baseUrl !== "string") {
-    return undefined;
-  }
-
-  const copied: Partial<ModelProviderConfig> = {
-    baseUrl,
-    models: copyArrayEntries(readRecordValue(providerConfig, "models")).flatMap((entry) => {
-      const model = copyProviderCatalogModel(entry);
-      return model ? [model] : [];
-    }),
-  };
-  for (const key of MODEL_PROVIDER_CONFIG_KEYS) {
-    const value = readRecordValue(providerConfig, key);
-    if (value !== undefined) {
-      (copied as Record<string, unknown>)[key] = value;
-    }
-  }
-  return copied as ModelProviderConfig;
 }

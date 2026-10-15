@@ -58,18 +58,7 @@ function resolveConnectionModels(
   cfg: OpenClawConfig,
   models: ProviderPresetModels,
 ): ModelDefinitionConfig[] {
-  return cfg.models?.mode === "replace" ? structuredClone(resolvePresetModels(models)) : [];
-}
-
-function extractAgentDefaultModelFallbacks(model: unknown): string[] | undefined {
-  if (!model || typeof model !== "object") {
-    return undefined;
-  }
-  if (!("fallbacks" in model)) {
-    return undefined;
-  }
-  const fallbacks = (model as { fallbacks?: unknown }).fallbacks;
-  return Array.isArray(fallbacks) ? fallbacks.map((value) => String(value)) : undefined;
+  return cfg.models?.mode === "replace" ? resolvePresetModels(models) : [];
 }
 
 function completeProviderPreset(
@@ -370,7 +359,8 @@ export function applyAgentDefaultModelPrimary(
   primary: string,
 ): OpenClawConfig {
   const defaults = cfg.agents?.defaults;
-  const existingFallbacks = extractAgentDefaultModelFallbacks(cfg.agents?.defaults?.model);
+  const model = defaults?.model;
+  const existingFallbacks = typeof model === "string" ? undefined : model?.fallbacks;
   const normalizedFallbacks = existingFallbacks?.map((fallback) =>
     normalizeAgentModelRefForConfig(fallback),
   );
