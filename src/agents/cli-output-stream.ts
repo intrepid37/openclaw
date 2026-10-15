@@ -99,6 +99,16 @@ export function createCliJsonlStreamingParser(params: CliJsonlStreamingParserOpt
     assistantText += delta;
     params.onAssistantDelta({ text: assistantText, delta, sessionId, usage });
   };
+  const retractAssistantPreview = () => {
+    params.onAssistantDelta({
+      text: assistantText,
+      delta: "",
+      replace: true,
+      retractCurrentPreview: true,
+      sessionId,
+      usage,
+    });
+  };
 
   const flushPendingClaudeText = (kind: "assistant" | "commentary") => {
     if (!unclassifiedClaudeText) {
@@ -116,7 +126,7 @@ export function createCliJsonlStreamingParser(params: CliJsonlStreamingParserOpt
       sawToolUseSinceText = false;
       assistantText += text;
     } else if (text) {
-      params.onAssistantDelta({ text: assistantText, delta: "", replace: true, sessionId, usage });
+      retractAssistantPreview();
       params.onCommentaryText?.(text);
     }
   };
@@ -397,14 +407,12 @@ export function createCliJsonlStreamingParser(params: CliJsonlStreamingParserOpt
       claudeStreamJson && !isClaudeSubagentRecord(parsed) && isClaudeStopHookFeedbackRecord(parsed);
     if (parsed.type === "result" || stopHookFeedback) {
       finishTaggedReasoningMessage();
-      if (classifyClaudeCommentary) {
-        flushPendingClaudeText("assistant");
-      }
+      flushPendingClaudeText("assistant");
     }
 
     if (stopHookFeedback) {
       assistantText = assistantText.slice(0, segmentStart);
-      params.onAssistantDelta({ text: assistantText, delta: "", replace: true, sessionId, usage });
+      retractAssistantPreview();
       resetReplySegment();
     }
 
@@ -502,13 +510,7 @@ export function createCliJsonlStreamingParser(params: CliJsonlStreamingParserOpt
         ) {
           assistantText = assistantText.slice(0, segmentStart);
           if (!completedText) {
-            params.onAssistantDelta({
-              text: assistantText,
-              delta: "",
-              replace: true,
-              sessionId,
-              usage,
-            });
+            retractAssistantPreview();
           }
         }
       }
@@ -719,9 +721,7 @@ export function createCliJsonlStreamingParser(params: CliJsonlStreamingParserOpt
           handleJsonlLine(tail);
         }
         finishTaggedReasoningMessage();
-        if (classifyClaudeCommentary) {
-          flushPendingClaudeText("assistant");
-        }
+        flushPendingClaudeText("assistant");
       } finally {
         toolTracker.inputProgressById.clear();
       }

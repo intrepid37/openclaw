@@ -356,7 +356,10 @@ export function createDiscordDraftPreviewController(params: {
     pushPlanProgress: progressDraft.pushPlanProgress.bind(progressDraft),
     pushReasoningProgress: progressDraft.pushReasoningProgress.bind(progressDraft),
     pushNarrationProgress: progressDraft.pushNarrationProgress.bind(progressDraft),
-    async updateFromPartial({ text, replace }: Pick<ReplyPayload, "text"> & { replace?: boolean }) {
+    updateFromPartial: async ({
+      text,
+      replace,
+    }: Pick<ReplyPayload, "text"> & { replace?: boolean }) => {
       const stream = draftStream;
       if (!stream) {
         return;

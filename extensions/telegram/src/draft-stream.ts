@@ -286,7 +286,7 @@ export function createTelegramDraftStream(params: {
     }
     // Rotation during an in-flight request is best effort; accept the returned preview.
     adoptSentMessage();
-    retireSupersededPreviews();
+    void retireSupersededPreviews();
     return true;
   };
   const sendOrEditPlannedPage = async (
@@ -660,17 +660,19 @@ export function createTelegramDraftStream(params: {
     const previews = supersededPreviews;
     supersededPreviews = [];
     return Promise.all(
-      previews.map(({ messageId, visibleSinceMs }) =>
-        discardPreview
-          ? deletePreview(messageId)
-          : scheduleDetachedDelete(messageId, visibleSinceMs, REPOSITION_DELETE_DELAY_MS),
-      ),
+      previews.map(async ({ messageId, visibleSinceMs }) => {
+        if (discardPreview) {
+          await deletePreview(messageId);
+        } else {
+          scheduleDetachedDelete(messageId, visibleSinceMs, REPOSITION_DELETE_DELAY_MS);
+        }
+      }),
     );
   };
   const retireWhenReplaced = (messageId: number, visibleSinceMs: number | undefined) => {
     supersededPreviews.push({ messageId, visibleSinceMs });
     if (typeof streamMessageId === "number") {
-      retireSupersededPreviews();
+      void retireSupersededPreviews();
     }
   };
 

@@ -570,7 +570,7 @@ export function createTelegramDispatchHttpFixture() {
               onSessionMetadataChanges: params.onSessionMetadataChanges,
               replyResolver,
               dispatchReplyFromConfig: producer
-                ? (params) => producer(params, channelOptions)
+                ? (dispatchParams) => producer(dispatchParams, channelOptions)
                 : undefined,
             });
           },

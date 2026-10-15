@@ -4,6 +4,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { awaitGateBeforeSettlement, createDeferred } from "../../../test/helpers/promise.js";
 import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
 import { withTestAdmittedRunContext } from "../../agents/admitted-run-context.test-support.js";
+import {
+  claudeBlockStart,
+  claudeStreamEvent,
+  claudeTextDelta,
+  createClaudeParser,
+  joinJsonlFrames,
+} from "../../agents/cli-output.test-helpers.js";
 import { createCliEventHandlers } from "../../agents/cli-runner/execute-events.js";
 import {
   buildContext,
@@ -379,7 +386,7 @@ describe("runCliAgentWithLifecycle", () => {
       handlers.emitCliCompletedReply(`${preview}\nNO_REPLY`, 1);
       handlers.emitCliAssistantDelta({ text: retry, delta: retry });
       handlers.emitCliCompletedReply(retry, 2);
-      return { payloads: [], meta: {} } satisfies EmbeddedAgentRunResult;
+      return { payloads: [], meta: { durationMs: 1 } } satisfies EmbeddedAgentRunResult;
     });
     const onAssistantText = vi.fn<(payload: PartialReplyPayload) => Promise<void>>(async () => {});
     const onCompletedReply = vi.fn(async (_text: string, _index: number) => {});
@@ -416,6 +423,79 @@ describe("runCliAgentWithLifecycle", () => {
       { text: "", isReasoningSnapshot: true },
     ]);
   });
+
+  it.each(["Stop hook", "tool commentary"])(
+    "retracts a parser withdrawal after an accepted reply: %s",
+    async (withdrawal) => {
+      const runId = "run-parser-withdrawal";
+      const earlier = "Earlier accepted answer.";
+      const preview = "A provisional message that will be withdrawn.";
+      const retry = "The revised answer.";
+      cliDispatchState.runCliAgentMock.mockImplementationOnce(async () => {
+        const handlers = createCliEventHandlers({
+          context: buildContext(runId),
+          toolTracking: buildToolTracking(),
+          getRunState: () => ({ failed: false, error: undefined }),
+        });
+        const parser = createClaudeParser({
+          onAssistantDelta: handlers.emitCliAssistantDelta,
+          onCompletedReply: handlers.emitCliCompletedReply,
+          ...(withdrawal === "tool commentary"
+            ? { onCommentaryText: handlers.emitCliCommentaryText }
+            : {}),
+        });
+        parser.push(
+          joinJsonlFrames(
+            claudeStreamEvent({ type: "message_start" }),
+            claudeTextDelta(earlier),
+            claudeStreamEvent({ type: "message_stop" }),
+            { type: "result", result: earlier, openclaw_interim_result: true },
+            claudeStreamEvent({ type: "message_start" }),
+            claudeTextDelta(preview),
+            withdrawal === "Stop hook"
+              ? { type: "system", subtype: "notification", key: "stop-hook-error" }
+              : claudeBlockStart({ type: "tool_use", id: "read-1", name: "Read" }),
+            claudeStreamEvent({ type: "message_start" }),
+            claudeTextDelta(retry),
+            { type: "result", result: retry },
+            "",
+          ),
+        );
+        parser.finish();
+        return { payloads: [], meta: { durationMs: 1 } } satisfies EmbeddedAgentRunResult;
+      });
+      const partials: PartialReplyPayload[] = [];
+      const completed: string[] = [];
+      const wireReplacements: unknown[] = [];
+      const stop = onAgentEvent((event) => {
+        if (event.runId === runId && event.stream === "assistant" && event.data.replace === true) {
+          wireReplacements.push(event.data.text);
+        }
+      });
+      try {
+        await runCliAgentWithLifecycle({
+          runId,
+          runParams: createRunParams(runId),
+          onAssistantText: async (payload) => {
+            partials.push(payload);
+          },
+          onCompletedReply: async (text) => {
+            completed.push(text);
+          },
+        });
+      } finally {
+        stop();
+      }
+      expect(partials.some(({ text }) => text?.includes(preview))).toBe(true);
+      expect(partials.filter(({ replace }) => replace)).toEqual([
+        { text: "", delta: "", replace: true },
+      ]);
+      expect(wireReplacements).toEqual([earlier]);
+      expect(completed).toEqual([earlier]);
+      expect(partials.at(-1)?.text).toContain(retry);
+      expect(partials.at(-1)?.text).not.toContain(preview);
+    },
+  );
 
   it.each(["Last answer.", ""])(
     "uses the recorded visible CLI projection, including an empty one: %j",

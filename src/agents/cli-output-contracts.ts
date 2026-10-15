@@ -90,6 +90,7 @@ export type CliStreamingDelta = {
   text: string;
   delta: string;
   replace?: true;
+  retractCurrentPreview?: true;
   sessionId?: string;
   usage?: CliUsage;
 };

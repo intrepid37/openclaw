@@ -392,7 +392,12 @@ export function createCliEventHandlers(params: {
       ),
     }));
   };
-  const emitCliAssistantDelta = ({ text, delta, replace }: CliStreamingDelta) => {
+  const emitCliAssistantDelta = ({
+    text,
+    delta,
+    replace,
+    retractCurrentPreview,
+  }: CliStreamingDelta) => {
     if (text || delta) {
       observedCliActivity = true;
       signalExecutionPhase("assistant_output_started");
@@ -402,6 +407,7 @@ export function createCliEventHandlers(params: {
       text: applyPluginTextReplacements(text, context.backendResolved.textTransforms?.output),
       delta: applyPluginTextReplacements(delta, context.backendResolved.textTransforms?.output),
       ...(replace ? { replace } : {}),
+      ...(retractCurrentPreview ? { retractCurrentPreview } : {}),
     }));
   };
   let acceptedReplyText = "";
