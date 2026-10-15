@@ -6,9 +6,11 @@ import type { AddressInfo } from "node:net";
 import { rawDataToString } from "@openclaw/gateway-client/websocket-data";
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { WebSocket, WebSocketServer, type RawData } from "ws";
+import { GATEWAY_CLIENT_IDS } from "../../packages/gateway-protocol/src/client-info.js";
 import { setRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
 import { resolveSessionStorePathCore } from "../config/sessions.js";
 import {
+  appendTranscriptMessage,
   deleteSessionEntryLifecycle,
   patchSessionEntryCore,
   upsertSessionEntryCore,
@@ -22,6 +24,7 @@ import { createPresenceRecipientProjection } from "./presence-projection.js";
 import { createGatewayBroadcaster } from "./server-broadcast.js";
 import { makeClient as makePresenceClient } from "./server-broadcast.test-helpers.js";
 import { createGatewayConnectionState } from "./server-connection-state.js";
+import { createTranscriptUpdateBroadcastHandler } from "./server-session-events.js";
 import { GatewayClientRegistry } from "./server/client-registry.js";
 import type { GatewayWsClient } from "./server/ws-types.js";
 import { createSessionRowProjection } from "./session-row-projection.js";
@@ -74,6 +77,93 @@ function makeClient(connId: string): { client: GatewayWsClient; socket: Recordin
 }
 
 describe("broadcast serialization failures", () => {
+  it("isolates live plugin notices from equally authorized TUI and native recipients in either order", async () => {
+    await withOpenClawTestState({ scenario: "minimal" }, async () => {
+      const cfg: OpenClawConfig = {};
+      setRuntimeConfigSnapshot(cfg);
+      const scope = {
+        agentId: "main",
+        sessionKey: "agent:main:steering",
+        sessionId: "steering",
+        storePath: resolveSessionStorePathCore(undefined, { agentId: "main" }),
+      };
+      await upsertSessionEntryCore(scope, { sessionId: scope.sessionId, updatedAt: 1 });
+      const message = {
+        role: "user",
+        display: false,
+        content: "Model prefix\n\nUse the smaller patch.",
+        provenance: { kind: "internal_system", sourceTool: "plugin:reviewer" },
+        __openclaw: {
+          pluginSteering: {
+            pluginId: "reviewer",
+            pluginName: "Reviewer",
+            displayText: "Use the smaller patch.",
+          },
+        },
+      };
+      await appendTranscriptMessage(scope, { eventId: "steer", now: 1, message });
+      const peers = [
+        GATEWAY_CLIENT_IDS.CONTROL_UI,
+        GATEWAY_CLIENT_IDS.TUI,
+        GATEWAY_CLIENT_IDS.MACOS_APP,
+      ].map((id) => {
+        const peer = makeClient(id);
+        peer.client.connect.scopes = ["operator.admin"];
+        peer.client.connect.client = { id, version: "test", platform: "test", mode: "webchat" };
+        return peer;
+      });
+      const connection = createGatewayConnectionState({
+        scheduler: createTestGatewayScheduler(),
+        bootId: "steering",
+        cfg,
+        getRuntimeConfig: () => cfg,
+      });
+      const projection = await createSessionRowProjection({
+        cfg,
+        modelCatalog: [],
+        getPolicyConfig: () => cfg,
+      });
+      onTestFinished(() => projection.dispose());
+      onTestFinished(connection.attachSessionRowProjection(projection));
+      onTestFinished(() => connection.mentionInbox.dispose());
+      const recipients = new Set(peers.map(({ client }) => client.connId));
+      const handler = createTranscriptUpdateBroadcastHandler({
+        broadcastToConnIds: connection.broadcastToConnIds,
+        sessionEventSubscribers: { getAll: () => recipients },
+        sessionMessageSubscribers: { get: () => recipients },
+        chatAbortControllers: new Map(),
+        getSessionRowProjection: () => projection,
+      });
+      for (const order of [peers, peers.toReversed()]) {
+        connection.clients.clear();
+        for (const peer of order) {
+          peer.socket.send.mockClear();
+          connection.clients.add(peer.client);
+        }
+        await handler({ target: scope, messageId: "steer", messageSeq: 1, message });
+        for (const peer of peers) {
+          const frames = peer.socket.send.mock.calls.map(([frame]) =>
+            JSON.parse(typeof frame === "string" ? frame : frame.toString()),
+          );
+          const notices = frames.filter((frame) => frame.event === "session.message");
+          expect(notices).toHaveLength(
+            peer.client.connect.client.id === GATEWAY_CLIENT_IDS.CONTROL_UI ? 1 : 0,
+          );
+          if (notices.length) {
+            expect(notices[0].payload.message).toMatchObject({
+              display: true,
+              content: [{ type: "text", text: "Use the smaller patch." }],
+              __openclaw: { pluginSteering: { pluginId: "reviewer", pluginName: "Reviewer" } },
+            });
+          }
+          expect(frames.some((frame) => frame.event === "sessions.changed")).toBe(true);
+        }
+      }
+      expect(message.display).toBe(false);
+      expect(message.content).toBe("Model prefix\n\nUse the smaller patch.");
+    });
+  });
+
   it("requires current session authorization for session-scoped writers", () => {
     const scope = "operator.sessions.write";
     const scoped = makeClient("scoped");

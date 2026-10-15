@@ -3375,6 +3375,9 @@ export const en: TranslationMap & {
       claudeCliTaskNotification: {
         label: "System · background task",
       },
+      pluginSteering: {
+        label: "{plugin} steered this run",
+      },
       showContent: "Show content",
     },
     skillLearned: {

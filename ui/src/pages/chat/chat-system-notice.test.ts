@@ -2,8 +2,10 @@
 import { afterEach, describe, expect, it } from "vitest";
 import type { ChatPendingInputsPage } from "../../../../packages/gateway-protocol/src/schema/logs-chat.js";
 import { coalesceAgentRunFrames } from "./chat-agent-run-grouping.ts";
+import { projectChatSystemNotice } from "./chat-system-notice.ts";
 import { createProps } from "./chat-thread.test-support.ts";
 import { buildCachedChatItems, resetChatThreadState } from "./chat-thread.ts";
+import { chatItemStartsDisplayTurn, chatItemStartsUserTurn } from "./chat-turn-boundary.ts";
 
 const clients = [{ id: "cli", mode: "cli", displayName: "Release helper" }];
 const baseMessage = {
@@ -177,6 +179,84 @@ describe("system notices through pending-to-history promotion", () => {
         },
       ]);
     }
+  });
+});
+
+describe("plugin steering notices", () => {
+  it.each([
+    [{ pluginId: "release-helper", pluginName: "Release Helper" }, "Release Helper"],
+    [{ pluginId: "review-helper" }, "review-helper"],
+    [{ pluginId: "review-helper", pluginName: " " }, "review-helper"],
+    [undefined, "review-helper"],
+  ] as const)(
+    "uses plugin attribution without starting an operator turn: %j",
+    (pluginSteering, name) => {
+      const before = { role: "user", content: "Review the patch.", timestamp: 999 };
+      const steering = {
+        ...baseMessage,
+        content: "Check the rollback path before continuing.",
+        provenance: {
+          kind: "internal_system",
+          sourceTool: `plugin:${pluginSteering?.pluginId ?? "review-helper"}`,
+        },
+        __openclaw: { ...baseMessage["__openclaw"], pluginSteering },
+      };
+      const after = {
+        role: "assistant",
+        content: "The rollback path is safe.",
+        timestamp: 1001,
+        __openclaw: { runId: "run" },
+      };
+
+      const items = render([before, steering, after], []);
+      expect(items).toMatchObject([
+        { kind: "group", role: "user", messages: [{ message: before }] },
+        {
+          kind: "notice",
+          label: `${name} steered this run`,
+          text: steering.content,
+          timestamp: 1000,
+          collapsedBody: true,
+          showTimestamp: true,
+        },
+        { kind: "group", role: "assistant", messages: [{ message: after }] },
+      ]);
+      const notice = items.find((item) => item.kind === "notice");
+      expect(notice).not.toHaveProperty("startsTurn");
+      if (!notice) {
+        throw new Error("Expected a plugin steering notice");
+      }
+      expect(chatItemStartsUserTurn(notice)).toBe(false);
+      expect(chatItemStartsDisplayTurn(notice)).toBe(false);
+      expect(coalesceAgentRunFrames(items)).toMatchObject([
+        { kind: "group", role: "user" },
+        { kind: "notice", label: `${name} steered this run` },
+        { kind: "agent-run-frame", runId: "run", boundaryId: "send:run" },
+      ]);
+      expect(render([before, steering, after], [], "rollback")).toMatchObject([
+        { kind: "notice", text: steering.content },
+        { kind: "group", role: "assistant" },
+      ]);
+    },
+  );
+
+  it.each([
+    { role: "user", provenance: { kind: "external_user", sourceTool: "plugin:review-helper" } },
+    {
+      role: "assistant",
+      provenance: { kind: "internal_system", sourceTool: "plugin:review-helper" },
+    },
+  ])("does not treat unrelated plugin-tagged messages as steering: %j", (fields) => {
+    const item = {
+      kind: "message" as const,
+      key: "not-steering",
+      message: {
+        ...baseMessage,
+        ...fields,
+        __openclaw: { pluginSteering: { pluginId: "review-helper", pluginName: "Review Helper" } },
+      },
+    };
+    expect(projectChatSystemNotice(item)).toEqual([item]);
   });
 });
 

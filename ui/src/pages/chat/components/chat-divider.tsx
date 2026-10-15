@@ -3,6 +3,7 @@ import type { NodePermissionRequest } from "../../../../../packages/gateway-prot
 import { Icon } from "../../../components/solid/icon.tsx";
 import { MarkdownHtml } from "../../../components/solid/markdown-html.tsx";
 import type { ChatItem } from "../../../lib/chat/chat-types.ts";
+import { formatTimeMs } from "../../../lib/format.ts";
 import { t } from "../../../lib/reactive/i18n.ts";
 import { detectTextDirection } from "../../../lib/text-direction.ts";
 import "./chat-permission-card.tsx";
@@ -158,7 +159,11 @@ function OrdinaryNotice(props: ChatNoticeProps) {
       role={props.item.tone === "danger" ? "alert" : undefined}
     >
       <Show when={props.item.label}>
-        <SystemLine icon={props.item.icon} label={props.item.label!} />
+        <SystemLine
+          icon={props.item.icon}
+          label={props.item.label!}
+          metric={props.item.showTimestamp ? formatTimeMs(props.item.timestamp) : undefined}
+        />
       </Show>
       <Show
         when={props.item.collapsedBody && props.item.text}

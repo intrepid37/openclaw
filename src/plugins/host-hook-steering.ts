@@ -2,12 +2,16 @@ import { resolveSessionAgentId } from "../agents/agent-scope.js";
 import { resolveActiveEmbeddedRunSessionId } from "../agents/embedded-agent-runner/active-run-projections.js";
 import { queueGuardedEmbeddedAgentMessageWithOutcomeAsync } from "../agents/embedded-agent-runner/runs.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
-import { createUserTurnTranscriptRecorder } from "../sessions/user-turn-transcript.js";
+import {
+  buildPersistedUserTurnMessage,
+  createUserTurnTranscriptRecorder,
+} from "../sessions/user-turn-transcript.js";
 import type { PluginActiveRunSteerParams, PluginActiveRunSteerResult } from "./plugin-api.types.js";
 
 export async function steerPluginActiveRun(params: {
   cfg: OpenClawConfig;
   pluginId: string;
+  pluginName?: string;
   input: PluginActiveRunSteerParams;
   assertCurrent: () => void;
 }): Promise<PluginActiveRunSteerResult> {
@@ -16,16 +20,25 @@ export async function steerPluginActiveRun(params: {
   if (!sessionId) {
     return { steered: false, reason: "no_active_run" };
   }
+  const message = buildPersistedUserTurnMessage({
+    text: params.input.text,
+    idempotencyKey: params.input.idempotencyKey,
+    // This is internal guidance, not a user instruction or another session's message.
+    provenance: { kind: "internal_system", sourceTool: `plugin:${params.pluginId}` },
+    display: false,
+    senderIsOwner: false,
+  });
+  message["__openclaw"] = {
+    ...message["__openclaw"],
+    pluginSteering: {
+      pluginId: params.pluginId,
+      ...(params.pluginName ? { pluginName: params.pluginName } : {}),
+      ...(params.input.displayText !== undefined ? { displayText: params.input.displayText } : {}),
+    },
+  };
   const recorder = createUserTurnTranscriptRecorder({
     assertOriginalInputCommit: params.assertCurrent,
-    input: {
-      text: params.input.text,
-      idempotencyKey: params.input.idempotencyKey,
-      // This is internal guidance, not a user instruction or another session's message.
-      provenance: { kind: "internal_system", sourceTool: `plugin:${params.pluginId}` },
-      display: false,
-      senderIsOwner: false,
-    },
+    message,
     target: {
       sessionId,
       expectedSessionId: sessionId,
