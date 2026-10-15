@@ -137,7 +137,7 @@ describe("runtime snapshot state", () => {
     expect(getAuthoredConfigSecretRef(getRuntimeConfigSnapshot(), "gateway.auth.token")).toBeNull();
   });
 
-  it("keeps model projections across display and no-op source writes but invalidates resolution changes", () => {
+  it("keeps model projections across display writes but invalidates authored values and resolution changes", () => {
     const initial: OpenClawConfig = {
       agents: { entries: { main: {} }, defaults: { model: "test/first" } },
     };
@@ -164,7 +164,8 @@ describe("runtime snapshot state", () => {
       }),
     ).toBe(true);
     const sourceKey = resolveRuntimeModelConfigCacheKey(getRuntimeConfigSnapshot()!);
-    expect(sourceKey).toBe(modelKey);
+    expect(sourceKey).not.toBe(modelKey);
+    expect(getRuntimeConfigSourceSnapshot()).toBe(source);
 
     const resolved = { ...display };
     setConfigResolutionFacts(resolved, new Set());
@@ -947,6 +948,7 @@ describe("captured async runtime reads", () => {
     async (change) => {
       const runtime: OpenClawConfig = { gateway: { port: 19001 } };
       const firstSource: OpenClawConfig = { gateway: { port: 19002 } };
+      const nextSource: OpenClawConfig = { gateway: { port: 19003 } };
       setRuntimeConfigSnapshot(runtime, firstSource);
       const selected = change === "captured source" ? captureRuntimeConfig(runtime) : runtime;
       setRuntimeConfigSnapshot(selected, firstSource);
@@ -955,7 +957,7 @@ describe("captured async runtime reads", () => {
       if (change === "reset") {
         resetConfigRuntimeState();
       } else {
-        setRuntimeConfigSnapshot(selected, { gateway: { port: 19003 } });
+        setRuntimeConfigSnapshot(selected, nextSource);
       }
       vi.stubEnv("CONFIG_CAPTURE_TEST", "replacement");
       const captured = await pending;
@@ -966,7 +968,7 @@ describe("captured async runtime reads", () => {
         const next = await loadPinnedRuntimeConfigAsync(async () => ({ config: {} }), {
           capture: true,
         });
-        expect(projectConfigOntoRuntimeSourceSnapshot(next.config)).toEqual(firstSource);
+        expect(projectConfigOntoRuntimeSourceSnapshot(next.config)).toEqual(nextSource);
       }
     },
   );

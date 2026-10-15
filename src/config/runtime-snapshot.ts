@@ -30,7 +30,10 @@ import { configSnapshotsMatch, stableConfigStringify } from "./runtime-config-sn
 import { runtimeSessionChangeScope } from "./runtime-session-changes.js";
 import {
   hashRuntimeConfigValue,
+  hashModelConfig,
+  matchesRuntimeConfigPublicationFact,
   matchesRuntimeConfigValueFact,
+  matchesRuntimeSourceConfigValueFact,
   prepareRuntimeConfigValueFact,
   type RuntimeConfigValueFact,
 } from "./runtime-snapshot-value-fact.js";
@@ -194,18 +197,31 @@ function publishRuntimeConfigSnapshot(
   const previousEditedInPlace =
     runtimeConfigSnapshot !== null &&
     runtimeConfigValueFact !== null &&
-    (!matchesRuntimeConfigValueFact(runtimeConfigSnapshot, runtimeConfigValueFact) ||
-      !isDeepStrictEqual(
-        serializeConfigResolutionFacts(runtimeConfigSnapshot),
-        runtimeConfigValueFact.facts,
-      ));
+    !matchesRuntimeConfigPublicationFact(runtimeConfigSnapshot, runtimeConfigValueFact);
+  const previousSourceEditedInPlace =
+    runtimeConfigSourceSnapshot !== null &&
+    runtimeSourceConfigValueFact !== null &&
+    !matchesRuntimeSourceConfigValueFact(runtimeConfigSourceSnapshot, runtimeSourceConfigValueFact);
+  // Authored policy can change while resolved runtime values stay identical. Only the
+  // write-version stamp is irrelevant to that policy; compare against captured source bytes.
+  const sourceMatchesPublished =
+    sourceConfig === undefined
+      ? runtimeConfigSourceSnapshot === null
+      : runtimeConfigSourceSnapshot !== null &&
+        runtimeSourceConfigValueFact !== null &&
+        matchesRuntimeSourceConfigValueFact(sourceConfig, runtimeSourceConfigValueFact);
   // Compare with what the previous publication recorded, since its object may have been edited
   // in place; withhold only a distinct object matching that record, or a proven no-op.
   const matchesPublished =
     runtimeConfigSnapshot !== config &&
     runtimeConfigSnapshotMetadata?.fingerprint === configFact.fingerprint &&
     isDeepStrictEqual(runtimeConfigValueFact?.facts, facts);
-  if (!previousEditedInPlace && (valuesUnchanged || matchesPublished)) {
+  if (
+    !previousEditedInPlace &&
+    !previousSourceEditedInPlace &&
+    sourceMatchesPublished &&
+    (valuesUnchanged || matchesPublished)
+  ) {
     return;
   }
   const sourceFact =
@@ -218,9 +234,10 @@ function publishRuntimeConfigSnapshot(
     sourceFingerprint: sourceConfig ? sourceFact.fingerprint : null,
     updatedAtMs: Date.now(),
   };
-  const scope = previousEditedInPlace
-    ? "config"
-    : runtimeSessionChangeScope(runtimeConfigSnapshot, config);
+  const scope =
+    previousEditedInPlace || previousSourceEditedInPlace || !sourceMatchesPublished
+      ? "config"
+      : runtimeSessionChangeScope(runtimeConfigSnapshot, config);
   prepareRuntimePluginsConfig(config);
   runtimeConfigSnapshotGeneration += 1;
   clearExecutablePathCache();
@@ -425,17 +442,6 @@ export function resolveRuntimeConfigCacheKey(config: OpenClawConfig): string {
     return `runtime:${metadata.revision}:${metadata.fingerprint}`;
   }
   return `config:${hashRuntimeConfigValue(config)}`;
-}
-
-function hashModelConfig(config: OpenClawConfig, sourceConfig: OpenClawConfig): string {
-  const project = (value: OpenClawConfig) => {
-    const { ui: _ui, meta, ...rest } = value;
-    const { lastTouchedVersion: _lastTouchedVersion, ...modelMeta } = meta ?? {};
-    return { config: { ...rest, meta: modelMeta }, facts: serializeConfigResolutionFacts(value) };
-  };
-  return sha256Base64Url(
-    stableConfigStringify({ runtime: project(config), source: project(sourceConfig) }),
-  );
 }
 
 /** Model projections ignore display settings, but retain authored values and resolution provenance. */
