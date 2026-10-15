@@ -10,8 +10,9 @@
   corner-shape: superellipse(1.5);
 }
 
+/* Retire entry animation before the overlay waits for closing presentation. */
 .chat-controls__inline-select[open] > wa-popup::part(popup),
-.chat-controls__inline-select[open] > .chat-picker-overlay {
+.chat-controls__inline-select[open] > .chat-picker-overlay:where(:not([data-phase="closing"])) {
   animation: chat-composer-picker-in var(--control-ui-transition-fast) ease;
 }
 
