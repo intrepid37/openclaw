@@ -193,10 +193,6 @@ function deleteFinishedSession(id: string): boolean {
 
 /** Removes visible session records without changing live-process activity. */
 export function deleteSession(id: string) {
-  const session = runningSessions.get(id) ?? finishedSessions.get(id);
-  if (session) {
-    removeNotifyOnExit(session);
-  }
   runningSessions.delete(id);
   deleteFinishedSession(id);
   scheduleSweeper();

@@ -22,6 +22,7 @@ import {
   addSession,
   deleteSession,
   markBackgrounded,
+  markExited,
   processSessionInstanceId,
 } from "./bash-process-registry.js";
 import { createProcessSessionFixture } from "./bash-process-registry.test-helpers.js";
@@ -31,6 +32,7 @@ import {
   prepareExecExitNotification,
   recoverExecExitNotifications,
 } from "./bash-tools.exec-notify.js";
+import { createProcessTool } from "./bash-tools.process.js";
 import { isRuntimeToolAllowed } from "./tool-policy-match.js";
 import { attachToolAllowlistIntersection } from "./tool-policy-shared.js";
 import { withGatewayToolCallerIdentity } from "./tools/gateway-caller-context.js";
@@ -187,8 +189,12 @@ describe("background exec completion obligations", () => {
         process.exitReason = "manual-cancel";
         await maybeNotifyOnExit(process, "failed", false);
       } else {
-        deleteSession(process.id);
-        await process.clearExitNotification?.();
+        markExited(process, 0, null, "completed");
+        const result = await createProcessTool().execute("remove", {
+          action: "remove",
+          sessionId: process.id,
+        });
+        expect(result.details).toMatchObject({ status: "completed" });
       }
       expect((await read())?.pendingExecNotifications).toBeUndefined();
       expect(enqueue).not.toHaveBeenCalled();

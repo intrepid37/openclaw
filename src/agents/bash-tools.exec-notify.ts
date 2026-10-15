@@ -261,7 +261,7 @@ function enqueueExecExitNotification(
     agentId: target.agentId!,
     sessionKey: target.sessionKey!,
     source: "exec",
-    contextKey: `exec:${id}`,
+    contextKey: options.contextKey ?? `exec:${id}`,
     sourceTurnId: `exec:${id}`,
     expectedTarget: target,
   });
