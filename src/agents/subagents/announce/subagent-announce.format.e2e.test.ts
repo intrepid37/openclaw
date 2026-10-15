@@ -38,7 +38,10 @@ import {
 import * as embeddedRuns from "../../embedded-agent-runner/runs.js";
 import { FailoverError } from "../../failover-error.js";
 import { buildAgentInternalEventContext, type AgentInternalEvent } from "../../internal-events.js";
-import { projectRuntimeContextFragments } from "../../internal-runtime-context.js";
+import {
+  projectRuntimeContextFragments,
+  RUNTIME_EVENT_USER_PROMPT,
+} from "../../internal-runtime-context.js";
 import { textAssistant } from "../../test-helpers/sparse-transcript.test-support.js";
 import { subagentRuns } from "../registry/subagent-registry-memory.js";
 import type { SubagentRunRecord } from "../registry/subagent-registry.types.js";

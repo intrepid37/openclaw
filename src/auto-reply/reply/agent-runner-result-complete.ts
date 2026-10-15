@@ -162,17 +162,20 @@ export async function completeReplyAgentRun(input: {
     );
     // Heartbeats already deliver fallback finals via sendDurableMessageBatch;
     // recovering here would duplicate that message.
-    const recovery = resolveStrandedReplyRecovery({
-      base: followupRun,
-      payloads: finalPayloads,
-      finalText: assistantFinalText,
-      terminalReply: runResult.meta?.terminalReply,
-      sourceReplyDeliveryMode: sourceReplyPolicy.sourceReplyDeliveryMode,
-      sendPolicyDenied: sourceReplyPolicy.sendPolicyDenied,
-      successfulSourceReplyDelivery: completedSourceReplyDelivery,
-      isHeartbeat,
-      isRoomEvent: sessionCtx.InboundEventKind === "room_event",
-    });
+    const recovery =
+      prepared.replyCompletion.outcome === "pending"
+        ? { kind: "none" as const }
+        : resolveStrandedReplyRecovery({
+            base: followupRun,
+            payloads: finalPayloads,
+            finalText: assistantFinalText,
+            terminalReply: runResult.meta?.terminalReply,
+            sourceReplyDeliveryMode: sourceReplyPolicy.sourceReplyDeliveryMode,
+            sendPolicyDenied: sourceReplyPolicy.sendPolicyDenied,
+            successfulSourceReplyDelivery: completedSourceReplyDelivery,
+            isHeartbeat,
+            isRoomEvent: sessionCtx.InboundEventKind === "room_event",
+          });
     if (recovery.kind === "retry") {
       warnPrivateMessageToolFinal({
         sessionKey,

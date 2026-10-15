@@ -1366,7 +1366,7 @@ describe("subagent registry lifecycle hardening", () => {
     "keeps provider success canonical while a %s callback waits behind capture",
     async (source) => {
       const { entry, controller, captured, captureSubagentCompletionReply } = createCaptureFixture(
-        createRunEntry({ expectsCompletionMessage: source === "killed" ? false : undefined }),
+        createRunEntry({ expectsCompletionMessage: false }),
       );
       const success = completeRun(controller, entry, { terminalReply: undefined });
       await waitForLifecycleState(() =>

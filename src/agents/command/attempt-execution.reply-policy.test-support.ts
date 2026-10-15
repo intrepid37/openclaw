@@ -100,8 +100,9 @@ export function registerCommandReplyPolicyTests({
         } else {
           const result = await attempt;
           if (cli) {
-            expect(result.payloads).toEqual([]);
+            expect(result.payloads).toBeUndefined();
             expect(result.meta.terminalReply).toEqual({ disposition: "silent" });
+            expect(result.meta.finalAssistantRawText).toBe("NO_REPLY");
             expect(result.meta.error).toBeUndefined();
             expect(
               classifyEmbeddedAgentRunResultForModelFallback({
