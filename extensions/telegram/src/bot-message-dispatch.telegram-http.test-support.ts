@@ -34,6 +34,9 @@ import {
 
 type RecordedBotApiCall = { method: string; fields: Record<string, unknown> };
 type ReplyResolver = NonNullable<Parameters<typeof dispatchInboundMessage>[0]["replyResolver"]>;
+type DispatchProducer = NonNullable<
+  Parameters<typeof dispatchInboundMessage>[0]["dispatchReplyFromConfig"]
+>;
 export type ReplyResolverOptions = Parameters<ReplyResolver>[1];
 
 const BOT_TOKEN = "123456:telegram-progress-http-fixture";
@@ -430,9 +433,10 @@ export function createTelegramDispatchHttpFixture() {
       mode: "off" | "partial" | "block" | "progress";
       toolProgress: boolean;
       finalReply?: ReplyPayload | ReplyPayload[];
-      producer?: NonNullable<
-        Parameters<typeof dispatchInboundMessage>[0]["dispatchReplyFromConfig"]
-      >;
+      producer?: (
+        params: Parameters<DispatchProducer>[0],
+        channelOptions: ReplyResolverOptions,
+      ) => ReturnType<DispatchProducer>;
       replyToMode?: "off" | "all" | "first" | "batched";
       accountId?: string;
       telegramDeps?: TelegramBotDeps;
@@ -452,6 +456,7 @@ export function createTelegramDispatchHttpFixture() {
     const caseSignal = lifetime.signal;
     const work = (async () => {
       let channelOptions: ReplyResolverOptions;
+      const producer = scenario?.producer;
       const replyResolver: ReplyResolver = async (_ctx, options) => {
         await options?.onReplyStart?.();
         await options?.onAssistantMessageStart?.();
@@ -564,7 +569,9 @@ export function createTelegramDispatchHttpFixture() {
               },
               onSessionMetadataChanges: params.onSessionMetadataChanges,
               replyResolver,
-              dispatchReplyFromConfig: scenario?.producer,
+              dispatchReplyFromConfig: producer
+                ? (params) => producer(params, channelOptions)
+                : undefined,
             });
           },
         },

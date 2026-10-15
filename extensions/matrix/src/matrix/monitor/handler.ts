@@ -480,9 +480,7 @@ export function createMatrixRoomMessageHandler(params: MatrixMonitorHandlerParam
               // Preserve explicit block streaming with draft previews: drafts update the live
               // block, while block deliveries finalize completed blocks as separate events.
               disableBlockStreaming: !blockStreamingEnabled,
-              onPartialReply: draftStream
-                ? (payload) => draftController.onPartialReply(payload.text ?? "")
-                : undefined,
+              onPartialReply: draftStream ? draftController.onPartialReply : undefined,
               onBlockReplyQueued: draftStream
                 ? (payload, context) => {
                     if (payload.isCompactionNotice === true) {

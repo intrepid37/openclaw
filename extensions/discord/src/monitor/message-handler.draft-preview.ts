@@ -145,6 +145,7 @@ export function createDiscordDraftPreviewController(params: {
       lastPartialText = "";
       draftText = "";
       hasStreamedAssistantText = false;
+      draftChunker?.reset();
       await draftStream?.deleteCurrentMessage();
     },
     isEmptyLine: isEmptyDiscordProgressLine,
@@ -355,9 +356,15 @@ export function createDiscordDraftPreviewController(params: {
     pushPlanProgress: progressDraft.pushPlanProgress.bind(progressDraft),
     pushReasoningProgress: progressDraft.pushReasoningProgress.bind(progressDraft),
     pushNarrationProgress: progressDraft.pushNarrationProgress.bind(progressDraft),
-    updateFromPartial(text?: string) {
+    async updateFromPartial({ text, replace }: Pick<ReplyPayload, "text"> & { replace?: boolean }) {
       const stream = draftStream;
-      if (!stream || !text) {
+      if (!stream) {
+        return;
+      }
+      if (!text) {
+        if (replace && text === "") {
+          await progressDraft.retractAssistantMessage();
+        }
         return;
       }
       const cleaned = stripInlineDirectiveTagsForDelivery(

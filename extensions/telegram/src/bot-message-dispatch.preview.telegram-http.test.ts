@@ -543,27 +543,53 @@ describe("Telegram preview, presentation, and progress delivery through HTTP", (
     ).toEqual([discarded, answer]);
   });
 
-  it.each([false, true])(
-    "retracts a silent preview while preserving earlier replies (retry: %s)",
-    async (retry) => {
+  it.each([
+    { retry: false, reasoning: false },
+    { retry: true, reasoning: false },
+    { retry: false, reasoning: true },
+    { retry: true, reasoning: true },
+  ])(
+    "retracts a silent preview while preserving earlier replies (retry: $retry, reasoning: $reasoning)",
+    async ({ retry, reasoning }) => {
       const previous = "The earlier completed answer remains visible.";
       const preview = "The model is considering whether this conversation needs another answer.";
+      const reasoningText = "Separate reasoning that belongs to the silent message.";
       const answer = "Here is the required reply after the silent completion.";
+      const retained = reasoning ? [] : [previous];
       let previewId: number | undefined;
       await dispatchProgressTurn(async () => undefined, {
         mode: "partial",
         toolProgress: false,
-        producer: async ({ dispatcher, replyOptions }) => {
-          dispatcher.sendFinalReply({ text: previous });
-          await dispatcher.waitForIdle();
+        cfg: { agents: { defaults: { reasoningDefault: reasoning ? "stream" : "off" } } },
+        producer: async ({ dispatcher, replyOptions }, channelOptions) => {
+          if (!reasoning) {
+            dispatcher.sendFinalReply({ text: previous });
+            await dispatcher.waitForIdle();
+          }
           await replyOptions?.onAssistantMessageStart?.();
+          if (reasoning) {
+            expect(channelOptions?.onReasoningStream).toBeTypeOf("function");
+            await channelOptions?.onReasoningStream?.({ text: reasoningText });
+            await waitForBotApiCall((call) => String(call.fields.text).includes(reasoningText));
+          }
           await replyOptions?.onPartialReply?.({ text: preview, delta: preview });
           await waitForBotApiCall(
             (call) => call.method === "sendMessage" && call.fields.text === preview,
           );
           previewId = [...visibleMessages].find(([, text]) => text === preview)?.[0];
-          expect([...visibleMessages.values()]).toEqual([previous, preview]);
+          if (!reasoning) {
+            expect([...visibleMessages.values()]).toContain(previous);
+          }
+          expect([...visibleMessages.values()]).toContain(preview);
+          if (reasoning) {
+            await channelOptions?.onReasoningStream?.({ text: "" });
+            expect([...visibleMessages.values()].some((text) => text.includes(reasoningText))).toBe(
+              false,
+            );
+          }
           await replyOptions?.onPartialReply?.({ text: "", delta: "", replace: true });
+          expect([...visibleMessages.values()]).not.toContain(preview);
+          expect([...visibleMessages.values()]).toEqual(retained);
           if (retry) {
             await replyOptions?.onAssistantMessageStart?.();
             await replyOptions?.onPartialReply?.({ text: answer });
@@ -572,7 +598,7 @@ describe("Telegram preview, presentation, and progress delivery through HTTP", (
           return { queuedFinal: true, counts: dispatcher.getQueuedCounts() };
         },
       });
-      expect([...visibleMessages.values()]).toEqual(retry ? [previous, answer] : [previous]);
+      expect([...visibleMessages.values()]).toEqual(retry ? [...retained, answer] : retained);
       expect(visibleMessages.get(previewId!)).not.toBe(preview);
     },
   );

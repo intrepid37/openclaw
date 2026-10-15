@@ -89,6 +89,47 @@ describe("processDiscordMessage provider preview hook safety", () => {
 });
 
 describe("processDiscordMessage draft streaming final delivery", () => {
+  it.each(["partial", "progress"] as const)(
+    "forwards silent %s preview retractions before the required-answer retry",
+    async (mode) => {
+      const advance = useProgressDraftStartDelay();
+      const draftStream = createMockDraftStreamForTest();
+      const observed: Array<string | undefined> = [];
+      dispatchInboundMessage.mockImplementationOnce(async (params?: DispatchInboundParams) => {
+        const update = async (text: string) => {
+          if (mode === "progress") {
+            await params?.replyOptions?.onPlanUpdate?.({
+              phase: "update",
+              steps: [{ step: text, status: "in_progress" }],
+            });
+          } else {
+            await params?.replyOptions?.onPartialReply?.({ text });
+          }
+          await advance();
+        };
+        await update("There is nothing useful to add.");
+        observed.push(draftStream.lastDeliveredText());
+        await params?.replyOptions?.onPartialReply?.({ text: "", replace: true });
+        observed.push(draftStream.messageId());
+        await update("Here is the required answer.");
+        observed.push(draftStream.lastDeliveredText());
+        return createNoQueuedDispatchResult();
+      });
+      const ctx = await createAutomaticDraftContext({
+        discordConfig: { streaming: { mode, progress: { label: false } } },
+      });
+
+      await runProcessDiscordMessage(ctx);
+
+      const prefix = mode === "progress" ? "▸ " : "";
+      expect(observed).toEqual([
+        `${prefix}There is nothing useful to add.`,
+        undefined,
+        `${prefix}Here is the required answer.`,
+      ]);
+    },
+  );
+
   it("preserves a delivered final when its first stale-preview cleanup fails", async () => {
     registerHooks("message_sent");
     const draftStream = createMockDraftStream();
@@ -133,7 +174,7 @@ describe("processDiscordMessage draft streaming final delivery", () => {
 
   it("keeps answer deltas private with default progress and delivers the final normally", async () => {
     await runSingleChunkFinalScenario({ maxLinesPerMessage: 5 });
-    expect(getLastDispatchReplyOptions()?.onPartialReply).toBeUndefined();
+    expect(getLastDispatchReplyOptions()?.onPartialReply).toBeTypeOf("function");
     expect(createDiscordDraftStream).toHaveBeenCalledOnce();
     expect(deliverDiscordReply).toHaveBeenCalledTimes(1);
     expectFreshFinalText("Hello\nWorld");

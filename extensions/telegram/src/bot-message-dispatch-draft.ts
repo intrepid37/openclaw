@@ -222,7 +222,7 @@ export async function rotateLaneForNewMessage(turn: Turn, lane: DraftLaneState):
 
 export async function retireAnswerLane(
   turn: Turn,
-  previewCleanup: "defer" | "clear" = "defer",
+  previewCleanup: "defer" | { discardPreview?: boolean } = "defer",
 ): Promise<void> {
   const lane = turn.answerLane;
   if (lane.finalized) {
@@ -232,7 +232,7 @@ export async function retireAnswerLane(
     repositionLaneForNewMessage(turn, lane);
   } else {
     // Clear settles in-flight sends and stops the stream before it can reopen.
-    await lane.stream?.clear();
+    await lane.stream?.clear(previewCleanup);
     lane.stream?.forceNewMessage();
     resetLaneState(turn, lane);
   }
@@ -344,9 +344,20 @@ function updateTelegramDraftFromPartial(
 
 export async function ingestDraftLaneSegments(
   turn: Turn,
-  update: { text?: string },
+  update: { text?: string; replace?: true },
   isReasoning?: boolean,
 ): Promise<void> {
+  if (update.text === "" && (isReasoning === true || update.replace)) {
+    if (isReasoning !== true) {
+      await turn.progressCompositor.retractAssistantMessage();
+    } else if (!turn.reasoningLane.finalized) {
+      await turn.reasoningLane.stream?.clear({ discardPreview: true });
+      turn.reasoningLane.stream?.forceNewMessage();
+      resetLaneState(turn, turn.reasoningLane);
+      turn.splitReasoningOnNextStream = false;
+    }
+    return;
+  }
   if (isReasoning !== true) {
     const stream = turn.answerLane.stream;
     if (!stream) {

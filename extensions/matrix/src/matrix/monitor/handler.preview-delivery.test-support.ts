@@ -72,18 +72,17 @@ export function registerMatrixPreviewDeliveryTests(harness: PreviewDeliveryHarne
         await secondPublished.promise;
         expect(sendSingleTextMessageMatrixMock).toHaveBeenCalledTimes(2);
         await opts.onPartialReply?.({ text: "", delta: "", replace: true });
+        expect(mockCalls(redactEventMock, "redactEvent").map(([, id]) => id)).toEqual(["$silent"]);
         if (required) {
           await opts.onAssistantMessageStart?.();
           await opts.onPartialReply?.({ text: "Retry answer" });
           const result = await deliver({ text: "Retry answer" }, { kind: "final" });
-          expect(result).toMatchObject({ messageIds: ["$silent"], content: "Retry answer" });
+          expect(result).toMatchObject({ messageIds: ["$draft1"], content: "Retry answer" });
         }
       } finally {
         await finish();
       }
-      expect(mockCalls(redactEventMock, "redactEvent").map(([, id]) => id)).toEqual(
-        required ? [] : ["$silent"],
-      );
+      expect(mockCalls(redactEventMock, "redactEvent").map(([, id]) => id)).toEqual(["$silent"]);
       expect(deliverMatrixRepliesMock).not.toHaveBeenCalled();
     },
   );

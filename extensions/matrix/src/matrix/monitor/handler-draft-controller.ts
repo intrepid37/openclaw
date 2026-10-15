@@ -191,6 +191,24 @@ export async function createMatrixDraftController(params: {
     progressDraft.beginNewTurn({ force: true });
   };
 
+  const onPartialReply: NonNullable<GetReplyOptions["onPartialReply"]> = async (payload) => {
+    const text = payload.text ?? "";
+    if (payload.replace && payload.text === "") {
+      latestDraftFullText = "";
+      await progressDraft.retractAssistantMessage();
+      return false;
+    }
+    if (progressDraftStreaming) {
+      return false;
+    }
+    latestDraftFullText = text;
+    if (text.trim()) {
+      progressDraft.resetActivity({ suppressed: true });
+    }
+    updateDraftFromLatestFullText();
+    return false;
+  };
+
   return {
     draftStream,
     previewLifecycle,
@@ -210,16 +228,6 @@ export async function createMatrixDraftController(params: {
     resetReplyToIdForNextBlock: () => {
       currentDraftReplyToId = replyToMode === "all" ? draftReplyToId : undefined;
     },
-    onPartialReply: (text: string) => {
-      if (progressDraftStreaming) {
-        return false;
-      }
-      latestDraftFullText = text;
-      if (text.trim()) {
-        progressDraft.resetActivity({ suppressed: true });
-      }
-      updateDraftFromLatestFullText();
-      return false;
-    },
+    onPartialReply,
   };
 }

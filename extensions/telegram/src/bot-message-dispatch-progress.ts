@@ -112,7 +112,7 @@ export function createProgressState(
       }
       return undefined;
     },
-    deleteCurrent: async () => await retireAnswerLane(getTurn(), "clear"),
+    deleteCurrent: async (options) => await retireAnswerLane(getTurn(), options ?? {}),
   });
   const draftLanes = [draftState.answerLane, draftState.reasoningLane];
   const settleDraftLanes = async (method: "flush" | "discard" | "clear") => {

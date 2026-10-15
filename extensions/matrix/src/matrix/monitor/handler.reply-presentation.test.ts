@@ -206,7 +206,7 @@ describe("matrix monitor handler reply presentation", () => {
       if (typeof payload.text !== "string") {
         throw new Error("prepared controls must have visible fallback text");
       }
-      draftController.onPartialReply(payload.text);
+      await draftController.onPartialReply(payload);
       await draftStream.flush();
       expect(sendSingleTextMessageMatrixMock).toHaveBeenCalledTimes(1);
       expect(draftStream.matchesPreparedText(payload.text)).toBe(true);

@@ -144,6 +144,57 @@ async function stageDelegation(controller: ReturnType<typeof createDiscordDraftP
 }
 
 describe("Discord draft preview REST lifecycle", () => {
+  it.each(["partial", "block", "progress"] as const)(
+    "retracts a silent %s preview and resumes the required-answer retry",
+    async (mode) => {
+      const { controller, visible, rest } = createContinuationHarness({ mode });
+      const accepted = "Earlier accepted answer.";
+      const rejected = "I have nothing useful to add to this conversation.";
+      const update = async (text: string) => {
+        if (mode === "progress") {
+          await controller.pushPlanProgress([{ step: text, status: "in_progress" }]);
+        } else {
+          await controller.updateFromPartial({ text });
+        }
+      };
+      const prefix = mode === "progress" ? "▸ " : "";
+      try {
+        await controller.lifecycle.deliver({
+          kind: "block",
+          payload: { text: accepted },
+          deliverNormally: async (payload) => {
+            await rest.post(Routes.channelMessages("c1"), { body: { content: payload.text } });
+            return { visibleReplySent: true };
+          },
+        });
+        controller.handleAssistantMessageBoundary();
+        await update(rejected);
+        await controller.flush();
+        await controller.updateFromPartial({ text: "" });
+        if (mode === "progress") {
+          await controller.updateFromPartial({
+            text: "Answer text stays out of progress previews.",
+          });
+        }
+        await controller.flush();
+        expect([...visible.values()]).toEqual([accepted, `${prefix}${rejected}`]);
+
+        await controller.updateFromPartial({ text: "", replace: true });
+        await controller.flush();
+        expect([...visible.values()]).toEqual([accepted]);
+
+        await update("Here is the complete required answer.");
+        await controller.flush();
+        expect([...visible.values()]).toEqual([
+          accepted,
+          `${prefix}Here is the complete required answer.`,
+        ]);
+      } finally {
+        await controller.cleanup();
+      }
+    },
+  );
+
   it("keeps ambient room events private even with default progress", async () => {
     vi.useFakeTimers();
     const { rest, visible } = createContinuationHarness({ discordConfig: {} });
@@ -446,7 +497,7 @@ describe("Discord draft preview REST lifecycle", () => {
   ])("preserves $name when block previews edit one message", async ({ text }) => {
     const { controller, visible } = createContinuationHarness({ mode: "block" });
     try {
-      controller.updateFromPartial(text);
+      await controller.updateFromPartial({ text });
       await controller.flush();
       expect([...visible.values()]).toEqual([text]);
       await controller.lifecycle.observeDelivery({ visibleReplySent: true });

@@ -620,52 +620,52 @@ export function createTelegramDraftStream(params: {
     loop.resetThrottleWindow();
   };
 
-  // Delete a superseded preview message DETACHED (scheduled, never awaited) so
-  // teardown is never stalled. The delay is at least the remaining on-screen
-  // dwell (so a preview is never flashed), and at least `minDelayMs` — a
-  // reposition passes a small floor so the NEW message has landed below before
-  // the old one disappears, keeping the viewport anchored instead of jumping.
+  const deletePreview = async (messageId: number) => {
+    try {
+      const deleted = await params.api.deleteMessage(chatId, messageId);
+      if (!deleted) {
+        params.warn?.(
+          `telegram stream preview cleanup was not confirmed (chat=${chatId}, message=${messageId})`,
+        );
+        return;
+      }
+      if (replyTargetState.kind === "retained" && replyTargetState.messageId === messageId) {
+        replyTargetState = { kind: "available" };
+      }
+      params.log?.(`telegram stream preview deleted (chat=${chatId}, message=${messageId})`);
+    } catch (err) {
+      params.warn?.(`telegram stream preview cleanup failed: ${formatErrorMessage(err)}`);
+    }
+  };
+  // Ordinary teardown retains its dwell; an explicit retraction is awaited instead.
   const scheduleDetachedDelete = (
     messageId: number,
     visibleSince: number | undefined,
     minDelayMs = 0,
   ) => {
-    const runDelete = async () => {
-      try {
-        const deleted = await params.api.deleteMessage(chatId, messageId);
-        if (!deleted) {
-          params.warn?.(
-            `telegram stream preview cleanup was not confirmed (chat=${chatId}, message=${messageId})`,
-          );
-          return;
-        }
-        if (replyTargetState.kind === "retained" && replyTargetState.messageId === messageId) {
-          replyTargetState = { kind: "available" };
-        }
-        params.log?.(`telegram stream preview deleted (chat=${chatId}, message=${messageId})`);
-      } catch (err) {
-        params.warn?.(`telegram stream preview cleanup failed: ${formatErrorMessage(err)}`);
-      }
-    };
     const elapsedMs =
       typeof visibleSince === "number" ? Date.now() - visibleSince : MIN_PREVIEW_DWELL_MS;
     const remainingDwellMs = Math.max(0, MIN_PREVIEW_DWELL_MS - elapsedMs);
     const delayMs = Math.max(remainingDwellMs, minDelayMs);
     if (delayMs <= 0) {
-      void runDelete();
+      void deletePreview(messageId);
     } else {
       setTimeout(() => {
-        void runDelete();
+        void deletePreview(messageId);
       }, delayMs);
     }
   };
 
-  const retireSupersededPreviews = () => {
+  const retireSupersededPreviews = (discardPreview = false) => {
     const previews = supersededPreviews;
     supersededPreviews = [];
-    for (const { messageId, visibleSinceMs } of previews) {
-      scheduleDetachedDelete(messageId, visibleSinceMs, REPOSITION_DELETE_DELAY_MS);
-    }
+    return Promise.all(
+      previews.map(({ messageId, visibleSinceMs }) =>
+        discardPreview
+          ? deletePreview(messageId)
+          : scheduleDetachedDelete(messageId, visibleSinceMs, REPOSITION_DELETE_DELAY_MS),
+      ),
+    );
   };
   const retireWhenReplaced = (messageId: number, visibleSinceMs: number | undefined) => {
     supersededPreviews.push({ messageId, visibleSinceMs });
@@ -674,8 +674,8 @@ export function createTelegramDraftStream(params: {
     }
   };
 
-  const clear = async () => {
-    retireSupersededPreviews();
+  const clear = async (options?: { discardPreview?: boolean }) => {
+    const retiring = retireSupersededPreviews(options?.discardPreview);
     const visibleSince = streamVisibleSinceMs;
     const messageId = await takeMessageIdAfterStop({
       stopForClear,
@@ -687,11 +687,15 @@ export function createTelegramDraftStream(params: {
       },
     });
     // Joining a rotated first send can add a late-accepted superseded preview.
-    retireSupersededPreviews();
+    await retireSupersededPreviews(options?.discardPreview);
     if (typeof messageId === "number" && Number.isFinite(messageId)) {
-      scheduleDetachedDelete(messageId, visibleSince);
+      if (options?.discardPreview) {
+        await deletePreview(messageId);
+      } else {
+        scheduleDetachedDelete(messageId, visibleSince);
+      }
     }
-    await Promise.all(pendingProviderObservations);
+    await Promise.all([retiring, ...pendingProviderObservations]);
   };
 
   const REPOSITION_DELETE_DELAY_MS = 1_500;

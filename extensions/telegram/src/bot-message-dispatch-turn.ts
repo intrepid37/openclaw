@@ -207,7 +207,7 @@ export async function runTelegramDispatchTurn(turn: Turn) {
             onReasoningStream: turn.reasoningLane.stream
               ? (payload) =>
                   queueDraftProgress(async () => {
-                    if (turn.splitReasoningOnNextStream) {
+                    if (turn.splitReasoningOnNextStream && payload.text) {
                       repositionLaneForNewMessage(turn, turn.reasoningLane);
                       turn.splitReasoningOnNextStream = false;
                     }
@@ -234,6 +234,9 @@ export async function runTelegramDispatchTurn(turn: Turn) {
                     const previousAnswerDelivered = turn.previewLifecycle.finalDelivered;
                     turn.previewLifecycle.reset();
                     turn.finalDispatchClaimed = false;
+                    if (previousAnswerDelivered) {
+                      turn.progressCompositor.beginNewTurn();
+                    }
                     turn.progressCompositor.beginAssistantMessage();
                     if (turn.answerLane.finalized) {
                       await rotateLaneForNewMessage(turn, turn.answerLane);
