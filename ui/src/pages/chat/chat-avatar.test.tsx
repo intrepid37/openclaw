@@ -1,6 +1,6 @@
 /* @vitest-environment jsdom */
 
-import { html, nothing, render } from "lit";
+import { nothing, render } from "lit";
 import { createSignal, flush } from "solid-js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { resolveThemeBranding } from "../../../../packages/gateway-protocol/src/theme.ts";
@@ -10,7 +10,6 @@ import { resolveAvatarHat } from "../../components/agent-avatar-hat.ts";
 import { createAgentIdentityCapability } from "../../lib/agents/identity.ts";
 import { setAvatarGatewayOrigin } from "../../lib/identity-avatar-context.ts";
 import { resolveAvatarImageUrl } from "../../lib/identity-avatar-loader.ts";
-import { LitContent } from "../../lit/solid-content.tsx";
 import { cleanupSolid, mountSolid } from "../../test-helpers/mount-solid.ts";
 import { ChatAvatar, ForwardedAvatar, type ChatAvatarProps } from "./chat-avatar-view.tsx";
 import {
@@ -22,7 +21,7 @@ import { makeChatHost } from "./chat-host.test-support.ts";
 import type { ChatPageHost } from "./chat-state-host.ts";
 import { resolveChatAvatarUrl } from "./chat-state-route.ts";
 import { ChatAuthorAvatar, renderChatAuthorAvatar } from "./components/chat-author-avatar.ts";
-import { renderWelcomeState } from "./components/chat-welcome.ts";
+import { ChatWelcome } from "./components/chat-welcome.tsx";
 
 const legacyContainers: HTMLElement[] = [];
 
@@ -357,14 +356,12 @@ describe("ChatAvatar", () => {
     } as const;
     const { container } = mountSolid(() => (
       <>
-        <LitContent
-          value={renderWelcomeState({
-            currentAgentId: "scout",
-            assistantName: "Scout",
-            assistantAvatar: null,
-            onDraftChange: () => undefined,
-            onSend: () => undefined,
-          })}
+        <ChatWelcome
+          currentAgentId="scout"
+          assistantName="Scout"
+          assistantAvatar={null}
+          onDraftChange={() => undefined}
+          onSend={() => undefined}
         />
         <ChatAvatar
           role="assistant"
@@ -428,24 +425,34 @@ describe("ChatAvatar", () => {
     const response = createDeferred<Response>();
     const fetchAvatar = vi.spyOn(globalThis, "fetch").mockReturnValue(response.promise);
     vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:shared-agent");
-    const container = createLegacyContainer();
     const avatar = "/avatar/main?v=1";
-    const welcome = (assistantAvatar: string | null, assistantAvatarUrl?: string) =>
-      renderWelcomeState({
-        assistantName: "Main",
-        assistantAvatar,
-        assistantAvatarUrl,
-        onDraftChange: () => undefined,
-        onSend: () => undefined,
-      });
-    const part = render(html`${welcome(avatar)}${welcome(null, avatar)}`, container);
+    const mountWelcome = () =>
+      mountSolid(() => (
+        <>
+          <ChatWelcome
+            assistantName="Main"
+            assistantAvatar={avatar}
+            onDraftChange={() => undefined}
+            onSend={() => undefined}
+          />
+          <ChatWelcome
+            assistantName="Main"
+            assistantAvatar={null}
+            assistantAvatarUrl={avatar}
+            onDraftChange={() => undefined}
+            onSend={() => undefined}
+          />
+        </>
+      ));
+    let welcome = mountWelcome();
     const transcript = mountSolid(() => (
       <ChatAvatar role="assistant" assistant={{ avatar, name: "Main" }} />
     ));
     const sources = () =>
-      [...container.querySelectorAll("img"), ...transcript.container.querySelectorAll("img")].map(
-        (image) => image.getAttribute("src"),
-      );
+      [
+        ...welcome.container.querySelectorAll("img"),
+        ...transcript.container.querySelectorAll("img"),
+      ].map((image) => image.getAttribute("src"));
     expect(sources()).toEqual([null, null, null]);
     expect(fetchAvatar).toHaveBeenCalledOnce();
     expect(fetchAvatar).toHaveBeenCalledWith(
@@ -454,9 +461,9 @@ describe("ChatAvatar", () => {
     );
     response.resolve(imageResponse());
     await vi.waitFor(() => expect(sources()).toEqual(Array(3).fill("blob:shared-agent")));
-    part.setConnected(false);
-    part.setConnected(true);
-    expect(sources()).toEqual(Array(3).fill("blob:shared-agent"));
+    welcome.unmount();
+    welcome = mountWelcome();
+    await vi.waitFor(() => expect(sources()).toEqual(Array(3).fill("blob:shared-agent")));
     expect(fetchAvatar).toHaveBeenCalledOnce();
   });
 
