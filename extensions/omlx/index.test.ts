@@ -256,6 +256,7 @@ describe("oMLX registered embedding provider", () => {
   it.each<{
     name: string;
     request: NonNullable<ModelProviderConfig["request"]>;
+    remoteHeaders?: Record<string, string>;
     authorization: string | null;
     customKey: string | null;
   }>([
@@ -290,7 +291,40 @@ describe("oMLX registered embedding provider", () => {
       authorization: null,
       customKey: "fixture-omlx-key",
     },
-  ])("inherits $name for embeddings", async ({ request, authorization, customKey }) => {
+    {
+      name: "memory header override of provider headers",
+      request: {},
+      remoteHeaders: { authorization: "Bearer fixture-memory-key" },
+      authorization: "Bearer fixture-memory-key",
+      customKey: null,
+    },
+    {
+      name: "memory header override of bearer auth",
+      request: {
+        auth: {
+          mode: "authorization-bearer",
+          token: { source: "env", provider: "default", id: "OMLX_STALE_TEST_AUTH" },
+        },
+      },
+      remoteHeaders: { Authorization: "Bearer fixture-memory-key" },
+      authorization: "Bearer fixture-memory-key",
+      customKey: null,
+    },
+    {
+      name: "memory header override of custom auth",
+      request: {
+        headers: { Authorization: "${OMLX_STALE_TEST_AUTH}" },
+        auth: {
+          mode: "header",
+          headerName: "X-oMLX-Key",
+          value: "${OMLX_STALE_TEST_AUTH}",
+        },
+      },
+      remoteHeaders: { "x-omlx-key": "fixture-memory-key" },
+      authorization: null,
+      customKey: "fixture-memory-key",
+    },
+  ])("uses $name for embeddings", async ({ request, remoteHeaders, authorization, customKey }) => {
     vi.stubEnv("OMLX_EMBED_TEST_KEY", "fixture-omlx-key");
     vi.stubEnv("OMLX_STALE_TEST_AUTH", undefined);
     let observedHeaders = new Headers();
@@ -315,6 +349,7 @@ describe("oMLX registered embedding provider", () => {
         },
       },
       model: "fixture-embedding",
+      remote: remoteHeaders ? { headers: remoteHeaders } : undefined,
     });
     await expect(result.provider?.embed("orchard")).resolves.toEqual([1, 0]);
     expect(fetch).toHaveBeenCalledOnce();
@@ -322,28 +357,32 @@ describe("oMLX registered embedding provider", () => {
     expect(observedHeaders.get("x-omlx-key")).toBe(customKey);
   });
 
-  it("rejects an unavailable effective header before sending embeddings", async () => {
-    vi.stubEnv("OMLX_STALE_TEST_AUTH", undefined);
-    const fetch = vi.fn();
-    vi.stubGlobal("fetch", fetch);
-    await expect(
-      embeddingAdapter().create({
-        config: {
-          models: {
-            providers: {
-              omlx: {
-                baseUrl: "http://127.0.0.1:8000/v1",
-                headers: { Authorization: "${OMLX_STALE_TEST_AUTH}" },
-                models: [],
+  it.each([undefined, { "X-Visible": "fixture-header" }])(
+    "rejects an unavailable effective header before sending embeddings (override: %j)",
+    async (remoteHeaders) => {
+      vi.stubEnv("OMLX_STALE_TEST_AUTH", undefined);
+      const fetch = vi.fn();
+      vi.stubGlobal("fetch", fetch);
+      await expect(
+        embeddingAdapter().create({
+          config: {
+            models: {
+              providers: {
+                omlx: {
+                  baseUrl: "http://127.0.0.1:8000/v1",
+                  headers: { Authorization: "${OMLX_STALE_TEST_AUTH}" },
+                  models: [],
+                },
               },
             },
           },
-        },
-        model: "fixture-embedding",
-      }),
-    ).rejects.toThrow(/OMLX_STALE_TEST_AUTH/);
-    expect(fetch).not.toHaveBeenCalled();
-  });
+          model: "fixture-embedding",
+          remote: remoteHeaders ? { headers: remoteHeaders } : undefined,
+        }),
+      ).rejects.toThrow(/OMLX_STALE_TEST_AUTH/);
+      expect(fetch).not.toHaveBeenCalled();
+    },
+  );
 
   it("preserves an explicit private-network denial", async () => {
     const fetch = vi.fn();

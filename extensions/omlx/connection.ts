@@ -29,7 +29,13 @@ export async function resolveOmlxSecret(
 export async function resolveOmlxHeaders(
   params: ConnectionContext,
   configured: ModelProviderConfig | undefined,
+  overriddenHeaders?: Record<string, string>,
 ): Promise<{ headers: Record<string, string>; hasHeaderAuth: boolean }> {
+  const overriddenNames = new Set(
+    Object.entries(overriddenHeaders ?? {})
+      .filter(([, value]) => value.trim())
+      .map(([name]) => name.trim().toLowerCase()),
+  );
   const resolve = (value: unknown, path: string) => resolveOmlxSecret(params, value, path);
   const resolveHeaders = async (
     inputs: Record<string, unknown> | undefined,
@@ -38,7 +44,8 @@ export async function resolveOmlxHeaders(
   ) => {
     const resolved: Record<string, string> = {};
     for (const [name, value] of Object.entries(inputs ?? {})) {
-      if (replacedNames.has(name.trim().toLowerCase())) {
+      const normalizedName = name.trim().toLowerCase();
+      if (replacedNames.has(normalizedName) || overriddenNames.has(normalizedName)) {
         continue;
       }
       const header = await resolve(value, `${path}.${name}`);
@@ -49,8 +56,11 @@ export async function resolveOmlxHeaders(
     return resolved;
   };
   const auth = configured?.request?.auth;
-  const resolvedAuth =
-    auth?.mode === "authorization-bearer"
+  const authHeaderName =
+    auth?.mode === "header" ? auth.headerName.trim().toLowerCase() : "authorization";
+  const resolvedAuth = overriddenNames.has(authHeaderName)
+    ? undefined
+    : auth?.mode === "authorization-bearer"
       ? {
           ...auth,
           token: (await resolve(auth.token, "models.providers.omlx.request.auth.token")) ?? "",
@@ -61,12 +71,11 @@ export async function resolveOmlxHeaders(
             value: (await resolve(auth.value, "models.providers.omlx.request.auth.value")) ?? "",
           }
         : auth;
+  // Replaced request auth still suppresses lower-priority Authorization headers.
   const authHeaderNames = new Set<string>();
   if (auth && auth.mode !== "provider-default") {
     authHeaderNames.add("authorization");
-    if (auth.mode === "header") {
-      authHeaderNames.add(auth.headerName.trim().toLowerCase());
-    }
+    authHeaderNames.add(authHeaderName);
   }
   // Resolve only effective headers so obsolete secrets cannot block an override.
   const requestHeaders = await resolveHeaders(

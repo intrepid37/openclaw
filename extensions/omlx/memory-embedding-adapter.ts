@@ -33,6 +33,7 @@ export const omlxEmbeddingProvider: MemoryEmbeddingProviderAdapter = {
       const { headers, hasHeaderAuth } = await resolveOmlxHeaders(
         { config, env: process.env },
         configured,
+        options.remote?.headers,
       );
       const remoteKey = options.remote?.apiKey;
       const hasRemoteAuth =
