@@ -186,13 +186,15 @@ it("refreshes one checkpoint with its partitions after an in-process replacement
           if (!replaced && isRecord(value) && value.kind === "refresh-session") {
             replaced = true;
             expect(
-              await activeLock!.writeRollup({
-                rollupId: sessionFile,
-                valueJson: new TextEncoder().encode(replacement.valueJson),
-                blob: replacement.blob,
-                partitions: replacement.partitions,
-                updatedAt: row.updatedAt + 1,
-              }),
+              await activeLock!.writeRollup([
+                {
+                  rollupId: sessionFile,
+                  valueJson: new TextEncoder().encode(replacement.valueJson),
+                  blob: replacement.blob,
+                  partitions: replacement.partitions,
+                  updatedAt: row.updatedAt + 1,
+                },
+              ]),
             ).toBe(true);
           }
           return onRequest(value, context);
@@ -550,8 +552,8 @@ it("serves fresh and partial usage while refresh waits for its host writer", asy
             !heldWrite &&
             isRecord(value) &&
             value.kind === "write" &&
-            isRecord(value.input) &&
-            value.input.key === growingFile
+            Array.isArray(value.input) &&
+            value.input.some((row) => isRecord(row) && row.key === growingFile)
           ) {
             heldWrite = true;
             writeEntered.resolve();

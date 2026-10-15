@@ -107,12 +107,14 @@ it.each(["rollup", "prune"] as const)(
         switch (operation) {
           case "rollup":
             expect(
-              await lock!.writeRollup({
-                rollupId: "session.jsonl",
-                valueJson: Buffer.from('{"totalTokens":2}'),
-                blob: null,
-                updatedAt: 2,
-              }),
+              await lock!.writeRollup([
+                {
+                  rollupId: "session.jsonl",
+                  valueJson: Buffer.from('{"totalTokens":2}'),
+                  blob: null,
+                  updatedAt: 2,
+                },
+              ]),
             ).toBe(true);
             break;
           case "prune":
@@ -222,12 +224,14 @@ it.each([
           }
           try {
             expect(await lock.acquire()).toBe(true);
-            return await lock.writeRollup({
-              rollupId: "session.jsonl",
-              valueJson: Buffer.from('{"totalTokens":7}'),
-              blob: null,
-              updatedAt: 1,
-            });
+            return await lock.writeRollup([
+              {
+                rollupId: "session.jsonl",
+                valueJson: Buffer.from('{"totalTokens":7}'),
+                blob: null,
+                updatedAt: 1,
+              },
+            ]);
           } finally {
             await lock.release();
           }
@@ -403,7 +407,7 @@ it.for(["rollup", "prune"] as const)(
         blob: null,
         updatedAt: 1,
       };
-      expect(await owner.writeRollup(row)).toBe(true);
+      expect(await owner.writeRollup([row])).toBe(true);
       const before = readSessionCostUsageRollupRows(agentId, database.path);
       const entered = createDeferredCore();
       const release = createDeferredCore();
@@ -416,7 +420,7 @@ it.for(["rollup", "prune"] as const)(
       const cancellation = new Error("Usage callback deadline expired");
       const writing =
         operation === "rollup"
-          ? owner.writeRollup({ ...row, rollupId: "canceled" }, controller.signal)
+          ? owner.writeRollup([{ ...row, rollupId: "canceled" }], controller.signal)
           : owner.pruneRows(before, controller.signal);
       const outcome = writing.then(
         () => undefined,
@@ -458,12 +462,14 @@ it("rejects a queued rollup after its refresh authority is revoked", async () =>
       await release.promise;
     });
     await entered.promise;
-    const writing = owner.writeRollup({
-      rollupId: "revoked",
-      valueJson: Buffer.from("{}"),
-      blob: null,
-      updatedAt: 1,
-    });
+    const writing = owner.writeRollup([
+      {
+        rollupId: "revoked",
+        valueJson: Buffer.from("{}"),
+        blob: null,
+        updatedAt: 1,
+      },
+    ]);
     const rejected = expect(writing).rejects.toThrow("Refresh revoked");
     current = false;
     release.resolve();
@@ -721,12 +727,14 @@ it.each([
           expect(written.updatedAt).toBeLessThanOrEqual(writeFinishedAt);
         }
         expect(
-          await lock.writeRollup({
-            rollupId: "session.jsonl",
-            valueJson: Buffer.from('{"totalTokens":7}'),
-            blob: null,
-            updatedAt: 1,
-          }),
+          await lock.writeRollup([
+            {
+              rollupId: "session.jsonl",
+              valueJson: Buffer.from('{"totalTokens":7}'),
+              blob: null,
+              updatedAt: 1,
+            },
+          ]),
         ).toBe(true);
         const database = openOpenClawAgentDatabase({ agentId, path: storePath, env: state.env });
         expect(readExactSessionEntryRow(database, scope.sessionKey)?.entry).toEqual(written);
@@ -757,12 +765,14 @@ it("acquires a current usage writer after its captured executor retires", async 
         delivery: { kind: "none" },
       });
       expect(
-        await lock.writeRollup({
-          rollupId: "session.jsonl",
-          valueJson: Buffer.from('{"totalTokens":7}'),
-          blob: null,
-          updatedAt: 1,
-        }),
+        await lock.writeRollup([
+          {
+            rollupId: "session.jsonl",
+            valueJson: Buffer.from('{"totalTokens":7}'),
+            blob: null,
+            updatedAt: 1,
+          },
+        ]),
       ).toBe(true);
       const current = openOpenClawAgentDatabase({ agentId, path: storePath, env: state.env });
       expect(readExactSessionEntryRow(current, scope.sessionKey)?.entry.sessionId).toBe(
@@ -846,6 +856,38 @@ it("allows first session creation while a fresh usage refresh awaits acquisition
       expect(await isSessionCostUsageRefreshRunning(agentId, storePath)).toBe(false);
     } finally {
       await lock.release();
+    }
+  });
+});
+
+it("rolls back the entire rollup batch when a later row fails", async () => {
+  const stateDir = tempDirs.make("openclaw-usage-cache-batch-rollback-");
+  await withEnvAsync({ OPENCLAW_STATE_DIR: stateDir }, async () => {
+    const agentId = "worker-1";
+    const { db } = openOpenClawAgentDatabase({ agentId });
+    const owner = prepareSessionCostUsageRefreshLock(agentId);
+    expect(await owner.acquire()).toBe(true);
+    await owner.pruneRows([]);
+    db.exec(`CREATE TRIGGER refuse_rollup_batch BEFORE INSERT ON cache_entries
+      WHEN NEW.key = 'second'
+      BEGIN SELECT RAISE(ABORT, 'rollup batch refused'); END;`);
+    const rows = ["first", "second"].map((rollupId) => ({
+      rollupId,
+      valueJson: new TextEncoder().encode("{}"),
+      blob: null,
+      updatedAt: 1,
+    }));
+    try {
+      await expect(owner.writeRollup(rows)).rejects.toThrow("rollup batch refused");
+      expect(readSessionCostUsageRollupRows(agentId)).toEqual([]);
+      db.exec("DROP TRIGGER refuse_rollup_batch");
+      expect(await owner.writeRollup(rows)).toBe(true);
+      expect(readSessionCostUsageRollupRows(agentId).map((row) => row.key)).toEqual([
+        "first",
+        "second",
+      ]);
+    } finally {
+      await owner.release();
     }
   });
 });

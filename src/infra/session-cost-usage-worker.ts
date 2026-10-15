@@ -546,6 +546,23 @@ export async function executeUsageCostWorker(
   const batchDeadline = maxFiles ? performance.now() + 10_000 : Infinity;
   let completedFiles = 0;
   let changed = pruned;
+  let pending: UsageCostWorkerHostEffects["write"]["input"] = [];
+  let pendingTransfers: ArrayBuffer[] = [];
+  let pendingBytes = 0;
+  let flushAt = performance.now() + 1_000;
+  const flush = async () => {
+    if (pending.length === 0) {
+      return;
+    }
+    const written = await host("write", pending, pendingTransfers);
+    if (!written) {
+      throw new Error("Usage rollup batch was not committed");
+    }
+    pending = [];
+    pendingTransfers = [];
+    pendingBytes = 0;
+    flushAt = performance.now() + 1_000;
+  };
   for (const { file, row, envelope, rebuild } of stale) {
     if (completedFiles > 0 && (completedFiles === maxFiles || performance.now() >= batchDeadline)) {
       break;
@@ -612,43 +629,37 @@ export async function executeUsageCostWorker(
     const dates = new Set(partitions.map((partition) => partition.date));
     const removedDates = envelope?.projection?.dates.filter((date) => !dates.has(date)) ?? [];
     const value = new TextEncoder().encode(valueJson);
-    // Host transfer detaches these buffers; retain a bounded copy only after a successful write.
-    const retainedBytes =
-      2 * valueJson.length +
+    pendingBytes +=
+      value.byteLength +
       blob.byteLength +
-      partitions.reduce(
+      changedPartitions.reduce(
         (bytes, partition) => bytes + 2 * partition.valueJson.length + partition.blob.byteLength,
         0,
       );
-    const retainedBody =
-      retainedBytes <= 8 * 1024 * 1024
-        ? { blob: Uint8Array.from(blob), partitions: structuredClone(partitions) }
-        : undefined;
-    const written = await host(
-      "write",
-      {
-        key: file.filePath,
-        value,
-        blob,
-        updatedAt: entry.scannedAt,
-        partitions: changedPartitions,
-        removedDates,
-        replacePartitions,
-      },
-      [value.buffer, blob.buffer, ...changedPartitions.map((partition) => partition.blob.buffer)],
+    pending.push({
+      key: file.filePath,
+      value,
+      blob,
+      updatedAt: entry.scannedAt,
+      partitions: changedPartitions,
+      removedDates,
+      replacePartitions,
+    });
+    pendingTransfers.push(
+      value.buffer,
+      blob.buffer,
+      ...changedPartitions.map((partition) => partition.blob.buffer),
     );
-    if (!written) {
-      throw new Error(`usage rollup changed while refreshing: ${file.filePath}`);
-    }
-    if (retainedBody) {
-      refreshInputs?.retainRollup(refreshInputs.rollupReceipt(), {
-        row: { key: file.filePath, valueJson, updatedAt: entry.scannedAt },
-        body: retainedBody,
-      });
+    // Bound retained bytes and writer occupancy; a single transcript may exceed
+    // the byte/time limit. Transfer buffers once instead of copying each body.
+    if (pending.length === 50 || pendingBytes >= 1024 * 1024 || performance.now() >= flushAt) {
+      await flush();
     }
     changed = true;
     completedFiles++;
   }
+  // Refresh completion (including a yielded batch) promises committed totals.
+  await flush();
   if (stale.length === completedFiles) {
     return { kind: "refresh", changed };
   }
