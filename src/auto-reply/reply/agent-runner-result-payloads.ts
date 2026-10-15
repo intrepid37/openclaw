@@ -214,15 +214,13 @@ export async function prepareReplyAgentPayloads(state: {
     committedMessagingToolSourceReplyDelivery ||
     visibleOutboundDelivery ||
     runResult.didSendDeterministicApprovalPrompt === true;
-  const sourceReplyDelivery = resolveSourceReplyDelivery(
-    runResult,
-    await resolveTerminalReplyDelivery({
-      blockReplyPipeline,
-      directBlockDeliveries,
-      resolveReplyDelivery: opts?.resolveReplyDelivery,
-      sourceReplyDeliveryState: runResult.sourceReplyDeliveryState,
-    }),
-  );
+  const terminalReplyDelivery = await resolveTerminalReplyDelivery({
+    blockReplyPipeline,
+    directBlockDeliveries,
+    resolveReplyDelivery: opts?.resolveReplyDelivery,
+    sourceReplyDeliveryState: runResult.sourceReplyDeliveryState,
+  });
+  const sourceReplyDelivery = resolveSourceReplyDelivery(runResult, terminalReplyDelivery);
   let completion = resolveReplyCompletion(
     terminalReplyExpectation,
     blocked || heartbeatAcknowledgment
@@ -720,6 +718,8 @@ export async function prepareReplyAgentPayloads(state: {
     kind: "continue" as const,
     activeSessionEntry,
     completedSourceReplyDelivery,
+    terminalReplyDelivery,
+    reminderNoteAppended: guardedReplyPayloads !== replyPayloads,
     guardedReplyPayloads,
     responseUsageLine,
   };

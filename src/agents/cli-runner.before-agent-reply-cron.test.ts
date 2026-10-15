@@ -663,6 +663,8 @@ describe("runCliAgent before_agent_reply seam", () => {
     });
     const { resolveDiagnosticModelResponse } = await import("./diagnostic-model-response.js");
     expect(resolveDiagnosticModelResponse(result)).toBeUndefined();
+    expect(prepareMock).not.toHaveBeenCalled();
+    expect(executeMock).not.toHaveBeenCalled();
   });
 
   it("dispatches a declining hook once when model fallback re-enters the CLI runner", async () => {

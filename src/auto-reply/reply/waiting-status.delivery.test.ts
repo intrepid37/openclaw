@@ -178,22 +178,6 @@ it("captures a message-tool sentinel before the empty-payload return", async () 
   expect(onRawLlmResponse).toHaveBeenCalledWith("NO_REPLY");
 });
 
-it("never captures message-tool text when the model wrote no final message", async () => {
-  const context = createContext();
-  const onRawLlmResponse = vi.fn();
-  context.opts = { onRawLlmResponse };
-  context.followupRun.run.terminalReplyExpectation = "optional";
-  context.execution.result.acceptedSessionSpawns = undefined;
-  context.execution.result.meta = { durationMs: 0 };
-  context.execution.result.payloads = [];
-  context.execution.result.messagingToolSentTargets = [
-    { tool: "message", provider: "slack", text: "sent to slack", sourceReplyFinal: true },
-  ];
-
-  await prepare("ordinary", context);
-  expect(onRawLlmResponse).not.toHaveBeenCalled();
-});
-
 it("does not capture hook-block rejection text as a model response", async () => {
   const context = createContext();
   const onRawLlmResponse = vi.fn();

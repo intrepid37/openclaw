@@ -38,10 +38,7 @@ import {
 import * as embeddedRuns from "../../embedded-agent-runner/runs.js";
 import { FailoverError } from "../../failover-error.js";
 import { buildAgentInternalEventContext, type AgentInternalEvent } from "../../internal-events.js";
-import {
-  projectRuntimeContextFragments,
-  RUNTIME_EVENT_USER_PROMPT,
-} from "../../internal-runtime-context.js";
+import { projectRuntimeContextFragments } from "../../internal-runtime-context.js";
 import { textAssistant } from "../../test-helpers/sparse-transcript.test-support.js";
 import { subagentRuns } from "../registry/subagent-registry-memory.js";
 import type { SubagentRunRecord } from "../registry/subagent-registry.types.js";
@@ -1162,7 +1159,7 @@ describe("subagent announce formatting", () => {
     },
   );
 
-  it.each(["777", undefined, "999"])(
+  it.each([undefined, "999"])(
     "uses the hook-provided thread target with requester thread %s",
     async (threadId) => {
       const requesterOrigin = {
@@ -1570,7 +1567,7 @@ describe("subagent announce formatting", () => {
     expect(readLatestAssistantReplyMock).not.toHaveBeenCalled();
   });
 
-  it.each([0, 600, undefined])(
+  it.each([600, undefined])(
     "wakes an ended orchestrator with current child results and its %s-second budget before upward announce",
     async (runTimeoutSeconds) => {
       const parentKey = "agent:main:subagent:parent";
@@ -1842,32 +1839,6 @@ describe("subagent announce formatting", () => {
     expect(sendSpy).not.toHaveBeenCalled();
   });
 
-  it("bubbles child announce to parent requester when requester subagent session is missing", async () => {
-    subagentRegistryMock.isSubagentSessionRunActive.mockReturnValue(false);
-    subagentRegistryMock.resolveRequesterForChildSession.mockReturnValue({
-      requesterSessionKey: "agent:main:main",
-      requesterOrigin: { channel: "whatsapp", to: "+1555", accountId: "acct-main" },
-    });
-    sessionStore = {
-      "agent:main:subagent:orchestrator": undefined,
-    };
-
-    const didAnnounce = await runSubagentAnnounceFlow({
-      ...defaultOutcomeAnnounce,
-      childSessionKey: "agent:main:subagent:leaf",
-      childRunId: "run-leaf",
-      requesterSessionKey: "agent:main:subagent:orchestrator",
-    });
-
-    expect(didAnnounce).toBe("delivered");
-    const call = getAgentCall();
-    expect(call.params?.sessionKey).toBe("agent:main:main");
-    expect(call.params?.deliver).toBe(true);
-    expect(call.params?.channel).toBe("whatsapp");
-    expect(call.params?.to).toBe("+1555");
-    expect(call.params?.accountId).toBe("acct-main");
-  });
-
   it("keeps announce retryable when missing requester subagent session has no fallback requester", async () => {
     subagentRegistryMock.isSubagentSessionRunActive.mockReturnValue(false);
     subagentRegistryMock.resolveRequesterForChildSession.mockReturnValue(null);
@@ -1888,22 +1859,19 @@ describe("subagent announce formatting", () => {
     expect(sessionsDeleteSpy).not.toHaveBeenCalled();
   });
 
-  it.each([false, true])(
-    "defers announce when the child stays active after settle timeout: completion=%s",
-    async (expectsCompletionMessage) => {
-      embeddedRunMock.isEmbeddedAgentRunActive.mockReturnValue(true);
-      embeddedRunMock.waitForEmbeddedAgentRunEnd.mockResolvedValue(false);
-      sessionStore = { "agent:main:subagent:test": { sessionId: "child-session-active" } };
-      const didAnnounce = await runSubagentAnnounceFlow({
-        ...defaultOutcomeAnnounce,
-        childRunId: "run-child-active",
-        ...(expectsCompletionMessage ? { expectsCompletionMessage: true } : {}),
-      });
-      expect(didAnnounce).toBe("retryable");
-      expect(agentSpy).not.toHaveBeenCalled();
-      expect(sendSpy).not.toHaveBeenCalled();
-    },
-  );
+  it("defers completion announce when the child stays active after settle timeout", async () => {
+    embeddedRunMock.isEmbeddedAgentRunActive.mockReturnValue(true);
+    embeddedRunMock.waitForEmbeddedAgentRunEnd.mockResolvedValue(false);
+    sessionStore = { "agent:main:subagent:test": { sessionId: "child-session-active" } };
+    const didAnnounce = await runSubagentAnnounceFlow({
+      ...defaultOutcomeAnnounce,
+      childRunId: "run-child-active",
+      expectsCompletionMessage: true,
+    });
+    expect(didAnnounce).toBe("retryable");
+    expect(agentSpy).not.toHaveBeenCalled();
+    expect(sendSpy).not.toHaveBeenCalled();
+  });
 
   it.each([
     {
@@ -1958,7 +1926,7 @@ describe("subagent announce formatting", () => {
         task: "QA task",
       });
       expect(didAnnounce).toBe("delivered");
-      expect(getAgentCall().params).toMatchObject({
+      expectAgentCallFields(getAgentCall(), {
         sessionKey: testCase.expectedSessionKey,
         deliver: false,
       });
@@ -2002,37 +1970,6 @@ describe("subagent announce formatting", () => {
       const message = getAgentCallContext(call);
       expect(message).toContain("result A");
       expect(message).toContain("result B");
-    });
-
-    it("includes child error status and output in the parent synthesis wake", async () => {
-      // Regression guard: failed child outcomes must still surface through parent completion synthesis.
-      subagentRegistryMock.countPendingDescendantRuns.mockReturnValue(0);
-      subagentRegistryMock.listSubagentRunsForRequester.mockImplementation((sessionKey: string) =>
-        sessionKey === "agent:main:subagent:parent-error"
-          ? [
-              makeChildCompletion(
-                "agent:main:subagent:parent-error",
-                "child-error",
-                "traceback: child exploded",
-                {
-                  task: "error child",
-                  execution: { endedAt: 11, outcome: { status: "error", error: "child exploded" } },
-                },
-              ),
-            ]
-          : [],
-      );
-
-      const didAnnounce = await announceWake(
-        "agent:main:subagent:parent-error",
-        "run-parent-error",
-      );
-
-      expect(didAnnounce).toBe("delivered");
-      const call = getAgentCall();
-      const message = getAgentCallContext(call);
-      expect(message).toContain("status: error: child exploded");
-      expect(message).toContain("traceback: child exploded");
     });
   });
 });

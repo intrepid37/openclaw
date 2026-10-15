@@ -14,6 +14,7 @@ import {
   isHiddenAssistantStreamText,
   shouldHideAssistantChatMessage,
 } from "../../lib/chat/message-visibility.ts";
+import { readPairingQrContent } from "../../lib/chat/pairing-qr.ts";
 import { visibleSessionMatches } from "../../lib/sessions/navigation.ts";
 import { isUiGlobalSessionKey, resolveUiDefaultAgentId } from "../../lib/sessions/session-key.ts";
 import { materializeVisibleAssistantStreamMessages } from "./chat-history-stream.ts";
@@ -140,6 +141,7 @@ export function handleChatGatewayEvent(state: ChatState, incoming?: ChatEventPay
           __openclaw: { ...asRecord(incomingFinalMessage["__openclaw"]), id: injectedMessageId },
         }
       : incomingFinalMessage;
+  const hasPairingQr = readPairingQrContent(normalizedFinalMessage).length > 0;
   const terminalAfterSequence = (
     messages: unknown[],
     runId: string | null | undefined,
@@ -335,7 +337,7 @@ export function handleChatGatewayEvent(state: ChatState, incoming?: ChatEventPay
       (payload.state === "final" &&
         (!incomingFinal ||
           shouldHideAssistantChatMessage(incomingFinal) ||
-          hasSessionProjectionAcceptedFinal(previousTerminalRun, incomingFinal)))
+          (!hasPairingQr && hasSessionProjectionAcceptedFinal(previousTerminalRun, incomingFinal))))
     ) {
       reconcileOwnedTerminalRun();
       return payload.state;
@@ -471,7 +473,7 @@ export function handleChatGatewayEvent(state: ChatState, incoming?: ChatEventPay
     }
   } else if (payload.state === "final") {
     const finalMessage = normalizedFinalMessage;
-    if (authoritativeTerminalMatches) {
+    if (authoritativeTerminalMatches && !hasPairingQr) {
       // History already owns this run's terminal message. Discard the live
       // projection; terminal cleanup below clears its remaining stream.
     } else if (finalMessage && !shouldHideAssistantChatMessage(finalMessage)) {

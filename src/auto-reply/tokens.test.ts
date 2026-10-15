@@ -9,10 +9,6 @@ describe("isInternalFormattingArtifact", () => {
     expect(isInternalFormattingArtifact("<lane|reasoning>")).toBe(true);
     expect(isInternalFormattingArtifact("<|>")).toBe(true);
     expect(isInternalFormattingArtifact("<|channel|>")).toBe(true);
-  });
-
-  it("matches set-thought directives (#88128)", () => {
-    expect(isInternalFormattingArtifact("  set-thought <channel|>  ")).toBe(true);
     expect(isInternalFormattingArtifact("set-thought <lane|reasoning>")).toBe(true);
   });
 

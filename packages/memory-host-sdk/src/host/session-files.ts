@@ -660,7 +660,7 @@ export async function buildSessionEntryFromSnapshot(
   const result = await buildSessionEntryFromSource(
     absPath,
     {
-      ...structuredClone(options),
+      ...options,
       ...(onTranscriptMessage
         ? {
             onTranscriptMessage(message, observedAt) {

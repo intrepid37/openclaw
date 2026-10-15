@@ -20,11 +20,7 @@ import {
   rememberFollowupDrainCallback,
 } from "./drain.js";
 import { completeFollowupRunLifecycle, markFollowupRunEnqueued } from "./lifecycle.js";
-import {
-  peekRecentQueueMessageId,
-  recordRecentQueueMessageId,
-  resetRecentQueuedMessageIdDedupe,
-} from "./recent-message-ids.js";
+import { peekRecentQueueMessageId, recordRecentQueueMessageId } from "./recent-message-ids.js";
 import {
   FOLLOWUP_QUEUES,
   getExistingFollowupQueue,
@@ -397,11 +393,5 @@ export function parkSteerCandidate(
       }
       return true;
     },
-  };
-}
-
-if (process.env.VITEST === "true" || process.env.NODE_ENV === "test") {
-  (globalThis as Record<PropertyKey, unknown>)[Symbol.for("openclaw.queueEnqueueTestApi")] = {
-    resetRecentQueuedMessageIdDedupe,
   };
 }

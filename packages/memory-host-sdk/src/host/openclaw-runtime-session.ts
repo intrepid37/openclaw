@@ -297,7 +297,7 @@ export function extractAgentIdFromSessionPath(absPath: string): string | null {
 export {
   DREAMING_NARRATIVE_RUN_PREFIX,
   isDreamingNarrativeSessionStoreKey,
-} from "./session-transcript-corpus-policy.js";
+} from "./openclaw-runtime-paths.js";
 
 export async function readSessionResetRecallCutoffInWorker(
   ...args: Parameters<

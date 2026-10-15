@@ -257,7 +257,10 @@ describe("heartbeat acknowledgements", () => {
               failure === "readiness"
                 ? {
                     webAuthExists: async () => {
-                      throw new Error("readiness unavailable");
+                      if (replySpy.mock.calls.length > 0) {
+                        throw new Error("readiness unavailable");
+                      }
+                      return true;
                     },
                   }
                 : undefined;
@@ -308,13 +311,14 @@ describe("heartbeat acknowledgements", () => {
     });
   });
 
-  it("defers delivery when WhatsApp is not linked", async () => {
+  it("skips the model when WhatsApp is not linked", async () => {
     await withHeartbeat(async ({ send, replySpy, run }) => {
       replySpy.mockResolvedValue({ text: "Heartbeat alert" });
       expect(
         await run({ webAuthExists: async () => false, hasActiveWebListener: () => false }),
       ).toMatchObject({ status: "skipped", reason: "channel-not-ready" });
       expect(getLastHeartbeatEvent()).toMatchObject({ reason: "whatsapp-not-linked" });
+      expect(replySpy).not.toHaveBeenCalled();
       expect(send).not.toHaveBeenCalled();
     });
   });
@@ -767,7 +771,10 @@ describe("runHeartbeatOnce failure delivery", () => {
                   ...heartbeatRunnerTelegramPlugin,
                   heartbeat: {
                     checkReady: async () => {
-                      throw new Error("readiness probe failed");
+                      if (replySpy.mock.calls.length > 0) {
+                        throw new Error("readiness probe failed");
+                      }
+                      return { ok: true, reason: "ok" };
                     },
                   },
                 },

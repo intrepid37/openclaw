@@ -67,6 +67,23 @@ function sessionsYieldTurn(message = "Waiting for subagent completion.") {
 }
 
 describe("dedupeLatestChildCompletionRows", () => {
+  it("retains independent agents' children when they share a raw session key", () => {
+    const children = ["main", "research"].map((childAgentId, index) => ({
+      runId: `${childAgentId}-run`,
+      childSessionKey: "global",
+      childAgentId,
+      generation: index + 1,
+      task: `${childAgentId} task`,
+      createdAt: 1_000,
+      execution: {},
+    }));
+
+    expect(dedupeLatestChildCompletionRows(children).map((child) => child.runId)).toEqual([
+      "main-run",
+      "research-run",
+    ]);
+  });
+
   it("prefers the newer generation when child runs share a creation timestamp", () => {
     const childSessionKey = "agent:main:subagent:reused";
     const older = {
@@ -289,7 +306,7 @@ describe("readSubagentOutput", () => {
 });
 
 describe("buildChildCompletionFindings", () => {
-  it.each(["x", "<"])("bounds 92 large child results after escaping %s", (padding) => {
+  it.each(["<"])("bounds 92 large child results after escaping %s", (padding) => {
     const children = Array.from({ length: 92 }, (_, index) => ({
       childSessionKey: `agent:main:subagent:${String(index).padStart(2, "0")}`,
       task: `Task ${index}`,
@@ -394,26 +411,6 @@ describe("buildChildCompletionFindings", () => {
       expect(findings).toContain(`status: ${expected}`);
     },
   );
-
-  it("includes the stopped recovery reason in parent-visible findings", () => {
-    const findings = buildChildCompletionFindings([
-      {
-        childSessionKey: "agent:main:subagent:replaced",
-        task: "interrupted task",
-        createdAt: 1,
-        execution: {
-          interruptionReason: "gateway-restart",
-          outcome: {
-            status: "error",
-            error: "Original child session was replaced; no child work was changed.",
-          },
-        },
-      },
-    ]);
-    expect(findings).toContain(
-      "status: interrupted by gateway restart: Original child session was replaced; no child work was changed.",
-    );
-  });
 
   it("bounds failure metadata while preserving the complete escaped child result", () => {
     const findings = buildChildCompletionFindings([

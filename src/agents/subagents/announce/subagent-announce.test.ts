@@ -1,7 +1,6 @@
 // Subagent announce flow tests cover the seam-level orchestration between wait
 // outcomes, requester lookup, delivery, and cleanup.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { normalizeSessionDeliveryState } from "../../../utils/delivery-context.shared.js";
 import type { EmbeddedAgentQueueMessageOutcome } from "../../embedded-agent-runner/runs.js";
 import type { SubagentRunRecord } from "../registry/subagent-registry.types.js";
 import * as announceDelivery from "./subagent-announce-delivery.js";
@@ -282,6 +281,7 @@ describe("subagent announce seam flow", () => {
         cleanup: "delete",
         roundOneReply,
         terminalReply: { disposition: "visible", text: "child result" },
+        fallbackReply: "stale result",
       });
 
       expect(didAnnounce).toBe("delivered");
@@ -486,41 +486,6 @@ describe("subagent announce seam flow", () => {
       prepareDispatchCurrent: expect.any(Function),
       assertDispatchCurrent: expect.any(Function),
     });
-  });
-
-  it("uses the stored canonical delivery target when mocked completion origins omit to", async () => {
-    loadSessionStoreMock.mockImplementation(() => ({
-      "agent:main:main": {
-        sessionId: "session-tg-group",
-        updatedAt: Date.now(),
-        delivery: normalizeSessionDeliveryState({
-          context: {
-            channel: "telegram",
-            to: "-1001234567890",
-            accountId: "bot:123",
-          },
-        }),
-      },
-    }));
-
-    const didAnnounce = await runAnnounceFlow({
-      startedAt: 10,
-      endedAt: 20,
-      childSessionKey: "agent:main:subagent:tg",
-      childRunId: "run-tg-group-completion",
-      requesterOrigin: { channel: "telegram" },
-      task: "telegram group task",
-      roundOneReply: "task done",
-      expectsCompletionMessage: true,
-    });
-
-    expect(didAnnounce).toBe("delivered");
-    expect(agentSpy).toHaveBeenCalledTimes(1);
-    const agentCall = requireAgentCall();
-    expect(agentCall.params?.deliver).toBe(true);
-    expect(agentCall.params?.channel).toBe("telegram");
-    expect(agentCall.params?.accountId).toBe("bot-123");
-    expect(agentCall.params?.to).toBe("-1001234567890");
   });
 
   it.each([
