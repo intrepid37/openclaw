@@ -19,6 +19,7 @@ import {
   type RuntimeConfigState,
 } from "../../lib/config/config-state-model.ts";
 import { t } from "../../lib/reactive/i18n.ts";
+import { ReasonedDisabledControl } from "../plugins/reasoned-disabled-control.tsx";
 import type { AgentConfigActions } from "./config-actions.tsx";
 import { AgentMemoryPanel } from "./memory/memory-panel.tsx";
 import { AgentFiles } from "./panels-files.tsx";
@@ -147,15 +148,18 @@ export function Agents(props: AgentsProps) {
       <section class="agents-toolbar">
         <div class="agents-toolbar-row">
           <div class="agents-toolbar-actions">
-            <Show when={props.access.canCreateAgent}>
+            <ReasonedDisabledControl
+              reason={!props.access.canCreateAgent ? t("custodian.accessRequired") : undefined}
+            >
               <button
                 class="btn btn--sm btn--ghost agents-create-btn"
-                disabled={props.loading}
+                disabled={props.loading || !props.access.canCreateAgent}
+                title={!props.access.canCreateAgent ? t("custodian.accessRequired") : undefined}
                 onClick={() => props.onCreateAgent()}
               >
                 {t("custodian.newAgent")}
               </button>
-            </Show>
+            </ReasonedDisabledControl>
             <Show when={selectedAgent()}>
               {(agent) => (
                 <>
