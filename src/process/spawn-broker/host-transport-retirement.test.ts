@@ -138,6 +138,36 @@ function brokerFixture(bootstrapFailure?: SendFailure) {
   return fixture;
 }
 
+it("releases undispatched native claims only after refused startup and broker close", async () => {
+  const fixture = brokerFixture();
+  const closed = createDeferredCore();
+  const lease = fixture.host.captureNativeResource(
+    { moduleUrl: "file:///synthetic/resource.mjs", ownerPort: true },
+    {
+      message: (message) => {
+        if (message.type === "resource-closed") {
+          closed.resolve();
+        }
+      },
+      failed() {},
+    },
+  );
+  fixture.leases.push(lease);
+  fixture.worker.emit("message", {
+    type: "startup-failed",
+    error: { message: "listen EPERM: synthetic socket", code: "EPERM", syscall: "listen" },
+  });
+  await expect(fixture.host.ready()).rejects.toThrow("listen EPERM: synthetic socket");
+  expect(() => lease.release()).toThrow("Native resource must close before release");
+  fixture.exit();
+  expect(() => lease.release()).toThrow("Native resource must close before release");
+  fixture.close();
+  await closed.promise;
+  await expect(lease.close()).resolves.toBeUndefined();
+  lease.release();
+  await fixture.host.close();
+});
+
 it.each(["callback", "throw", "deadline"] as const)(
   "retires a connected native broker after bootstrap %s failure without killing its isolate",
   async (mode) => {
@@ -164,6 +194,7 @@ it.each([
   "readiness",
   "native readiness",
   "native callback",
+  "startup receipt",
   "child error",
   "pipe setup",
   "pipe receipt callback",
@@ -215,6 +246,11 @@ it.each([
         throw new Error("synthetic receiver failed");
       });
       worker.emit("message", { type: "resource-target", id, value: "synthetic response" });
+    } else if (failure === "startup receipt") {
+      worker.emit("message", {
+        type: "startup-failed",
+        error: { message: "unexpected startup failure after readiness" },
+      });
     } else if (failure === "child error") {
       worker.emit("error", new Error("synthetic child IPC error"));
     } else if (failure === "pipe setup") {

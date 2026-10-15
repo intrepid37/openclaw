@@ -14,6 +14,7 @@ import {
 import { ConfigWritePostCommitError } from "../config/io.write-errors.js";
 import { resolveConfigPath, resolveStateDir } from "../config/paths.js";
 import { isTruthyEnvValue } from "../infra/env.js";
+import { withSqliteSnapshotFailureScope } from "../infra/sqlite-error-diagnostics.js";
 import type { AgentDatabaseMigrationTarget } from "../infra/state-migrations.media-persistence-targets.js";
 import { retainUpdateDoctorProcesses } from "../infra/update-doctor-process-custody.js";
 import {
@@ -488,7 +489,9 @@ async function runDoctorHealthFlowWithResult(
     let ctx: DoctorHealthFlowContext | undefined;
     let failure: unknown;
     try {
-      ctx = await (maintenance ? maintenance.run(runChecks) : runChecks());
+      ctx = await withSqliteSnapshotFailureScope(() =>
+        maintenance ? maintenance.run(runChecks) : runChecks(),
+      );
       if (ctx && maintenance && options.repair === true && sqliteNoCowPaths.length > 0) {
         if (
           resolveDoctorRepairMode(options).updateInProgress &&

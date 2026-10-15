@@ -236,3 +236,29 @@ For each production-pinned JIT and bytecode artifact:
 Keep the commands, traces, manifests, signed-artifact identity, negative
 controls, and results with the qualification report. A different compiler,
 target, compilation mode, or native dependency set requires new evidence.
+
+### Sandboxed Doctor on macOS
+
+SQLite snapshot workers use an authenticated local broker at
+`<TMPDIR>/oc-br-*/resource.sock`. This is Unix-domain IPC, including in the loose
+runtime; it does not contact a network service. A sandbox's `(deny network*)`
+also denies binding and connecting to this socket. Permit `network-bind` for
+local Unix sockets and `network-outbound` for remote Unix sockets, only within
+the isolated temporary root. Keep IP networking, the
+operator's home, Keychain, launchctl, and host SQLite libraries denied.
+
+Use a short, canonical temporary root: Darwin limits Unix socket paths to 103
+bytes. The broker's fallback for longer paths is outside the isolated root and
+should remain denied by the verifier.
+
+The manual proof script clones the complete artifact into a fresh root and runs
+version, Gateway help, and Doctor with a 60-second deadline:
+
+```bash
+node scripts/verify-standalone-doctor.mjs ./standalone-jit
+node scripts/verify-standalone-doctor.mjs ./standalone-jit --deny-local-ipc
+```
+
+The second command intentionally denies the broker socket and requires Doctor
+to exit with an error, without reporting completion or hanging. Run both commands
+for the signed JIT and bytecode artifacts.
