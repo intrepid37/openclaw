@@ -15,6 +15,7 @@ assert(
   "Usage: node scripts/verify-standalone-doctor.mjs <standalone-directory> [--deny-local-ipc]",
 );
 const denyLocalIpc = flags.includes("--deny-local-ipc");
+const profile = "standalone-verify";
 // Darwin's sockaddr_un limit includes TMPDIR, the private directory, and socket name.
 const root = fs.realpathSync(fs.mkdtempSync("/private/tmp/oc-doctor-"));
 try {
@@ -80,7 +81,6 @@ ${
     PATH: "/usr/bin:/bin:/usr/sbin:/sbin",
     OPENCLAW_STATE_DIR: path.join(root, "state"),
     OPENCLAW_CONFIG_PATH: config,
-    OPENCLAW_NO_RESPAWN: "1",
   };
   const prefix = [
     "-D",
@@ -92,6 +92,8 @@ ${
     "/usr/bin/arch",
     process.arch === "arm64" ? "-arm64" : "-x86_64",
     executable,
+    "--profile",
+    profile,
   ];
   const results = [];
   for (const args of [["--version"], ["gateway", "--help"], ["doctor", "--non-interactive"]]) {
@@ -129,7 +131,7 @@ ${
       }
     }
     results.push({
-      command: args.join(" "),
+      command: ["--profile", profile, ...args].join(" "),
       code,
       elapsedMs: Math.round(performance.now() - started),
     });
@@ -138,6 +140,7 @@ ${
     JSON.stringify({
       mode: manifest.mode,
       commit: manifest.openclaw.commit,
+      profile,
       denyLocalIpc,
       results,
     }),

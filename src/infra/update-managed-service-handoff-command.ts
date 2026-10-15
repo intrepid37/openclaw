@@ -1,4 +1,4 @@
-import path from "node:path";
+import { resolveOpenClawCliInvocation } from "../../cli-invocation.mjs";
 import { formatCliCommand } from "../cli/command-format.js";
 import { resolveRuntimeArgs } from "./runtime-worker-url.js";
 import type { UpdateChannel } from "./update-channels.js";
@@ -34,11 +34,14 @@ export function resolveManagedServiceCliArgv(
 ): string[] {
   const execPath = params.execPath?.trim();
   const argv1 = params.argv1?.trim();
-  if (execPath && argv1) {
-    return [execPath, ...resolveRuntimeArgs(execPath), argv1, ...args];
-  }
-  if (execPath && !/^(?:node|bun)(?:\.exe)?$/iu.test(path.basename(execPath))) {
-    return [execPath, ...args];
+  if (execPath) {
+    const invocation = resolveOpenClawCliInvocation({
+      execPath,
+      entryPath: argv1,
+      execArgv: resolveRuntimeArgs(execPath),
+      args,
+    });
+    return [invocation.command, ...invocation.args];
   }
   return ["openclaw", ...args];
 }

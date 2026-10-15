@@ -203,6 +203,14 @@ builder embeds known worker and child programs. Plugins that use
 `process.execPath` to run arbitrary scripts or Bun flags need a separate runtime
 or their own standalone integration and qualification.
 
+The shared `cli-invocation.mjs` module owns OpenClaw CLI launch arguments for
+startup respawns, update helpers, and service launchers. A standalone invocation
+passes CLI arguments directly to the executable, including root options such as
+`--profile`; it does not prepend a script path or interpreter flags. A loose
+Node or Bun invocation retains its runtime flags and entry script. Standalone
+identity comes from the embedded runtime location or the adjacent manifest,
+not the executable's filename.
+
 ## Qualify an artifact before packaging
 
 CI covers the builder's inexpensive pure contracts: worker discovery, manifest
@@ -214,14 +222,21 @@ For each production-pinned JIT and bytecode artifact:
 1. Record compiler revision and checksum, OpenClaw commit, output sizes and
    hashes, and the mode-specific signing entitlements.
 2. Use isolated HOME, configuration, state, workspace, and temporary directories.
+   Pass the same explicit `--profile <isolated-name>` on every CLI launch,
+   including version/help, Doctor, Gateway commands, and agent turns. Keep normal
+   startup respawn and compile-cache behavior enabled.
    Reserve ports `19995` and `19996`; refuse to run if another process owns them.
    Sandbox Doctor so it cannot inspect or mutate the operator's live state or
    services.
 3. Run one strict trace campaign and at least four functional campaigns per
    mode. Exercise version/help, config set/get/validate, Doctor, Gateway
-   readiness, agent turns, and Gateway stop/restart. The trace must observe every
-   JavaScript VM and worker, reconcile worker creation receipts, and find no
-   disk JavaScript reads, resolutions, or cache entries on the exercised paths.
+   readiness, agent turns, and Gateway stop/restart. Exercise the running
+   Gateway's restart request through its current supervisor and verify the
+   replacement with health and another agent turn. For an external supervisor,
+   consume the exact-PID restart handoff before starting the replacement.
+   The trace must observe every JavaScript VM and worker, reconcile worker
+   creation receipts, and find no disk JavaScript reads, resolutions, or cache
+   entries on the exercised paths.
 4. Run the signed functional campaign with only the declared entitlements.
    Remove each declared entitlement in a separate negative control and record
    the concrete failure that makes it necessary. Drop entitlements with no
@@ -252,7 +267,9 @@ bytes. The broker's fallback for longer paths is outside the isolated root and
 should remain denied by the verifier.
 
 The manual proof script clones the complete artifact into a fresh root and runs
-version, Gateway help, and Doctor with a 60-second deadline:
+version, Gateway help, and Doctor with `--profile standalone-verify` and a
+60-second deadline. It keeps startup respawn enabled, so the checks also cover
+profile arguments crossing a compiled CLI relaunch:
 
 ```bash
 node scripts/verify-standalone-doctor.mjs ./standalone-jit
