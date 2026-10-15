@@ -301,6 +301,18 @@ describe("oMLX setup through the inference catalog", () => {
     expect(ctx.toApiKeyCredential).not.toHaveBeenCalled();
   });
 
+  it("reports a non-string model option before discovery or credential persistence", async () => {
+    const fetchMock = fixture();
+    const ctx = nonInteractiveContext();
+    ctx.opts.customModelId = { unexpected: "value" };
+    const error = vi.spyOn(ctx.runtime, "error");
+    await expect(validateOmlxNonInteractive(ctx)).resolves.toBe(false);
+    expect(error).toHaveBeenCalledWith(expect.stringContaining("requires --custom-model-id"));
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(ctx.resolveApiKey).not.toHaveBeenCalled();
+    expect(ctx.toApiKeyCredential).not.toHaveBeenCalled();
+  });
+
   it("retains a private-network denial when setup changes the endpoint", async () => {
     const fetchMock = fixture();
     const ctx = interactiveContext();

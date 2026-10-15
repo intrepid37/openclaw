@@ -2,6 +2,7 @@ import type { ProviderAppGuidedSetupContext } from "openclaw/plugin-sdk/plugin-e
 import {
   buildApiKeyCredential,
   ensureApiKeyFromEnvOrPrompt,
+  normalizeOptionalSecretInput,
   type OpenClawConfig,
   type SecretInput,
   type SecretInputMode,
@@ -136,7 +137,9 @@ export async function configureOmlxInteractive(
 type NonInteractiveContext = Omit<ProviderAuthMethodNonInteractiveContext, "toApiKeyCredential">;
 
 async function prepareNonInteractive(ctx: NonInteractiveContext) {
-  const modelId = ctx.opts.customModelId?.trim();
+  const modelId = normalizeOptionalSecretInput(ctx.opts.customModelId);
+  const baseUrl = normalizeOptionalSecretInput(ctx.opts.customBaseUrl);
+  const apiKey = normalizeOptionalSecretInput(ctx.opts.customApiKey);
   if (!modelId) {
     ctx.runtime.error(
       "oMLX setup requires --custom-model-id. List model IDs at the server's /v1/models endpoint.",
@@ -145,12 +148,12 @@ async function prepareNonInteractive(ctx: NonInteractiveContext) {
   }
   const resolved = await ctx.resolveApiKey({
     provider: OMLX_PROVIDER_ID,
-    flagValue: ctx.opts.customApiKey,
+    flagValue: apiKey,
     flagName: "--custom-api-key",
     envVar: OMLX_API_KEY_ENV_VAR,
     allowProfile:
-      !ctx.opts.customBaseUrl ||
-      ctx.opts.customBaseUrl.trim().replace(/\/+$/, "") ===
+      !baseUrl ||
+      baseUrl.replace(/\/+$/, "") ===
         (ctx.config.models?.providers?.omlx?.baseUrl ?? OMLX_DEFAULT_BASE_URL)
           .trim()
           .replace(/\/+$/, ""),
@@ -159,7 +162,7 @@ async function prepareNonInteractive(ctx: NonInteractiveContext) {
   const listing = await listOmlxModels({
     config: ctx.config,
     env: process.env,
-    baseUrl: ctx.opts.customBaseUrl,
+    baseUrl,
     ...(resolved ? { apiKey: resolved.key } : {}),
   });
   if (!listing?.provider.models.some((model) => model.id === modelId)) {
