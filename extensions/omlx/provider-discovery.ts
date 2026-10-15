@@ -1,5 +1,29 @@
-import type { ProviderPlugin } from "openclaw/plugin-sdk/provider-model-shared";
+import type {
+  ModelProviderConfig,
+  ProviderPlugin,
+} from "openclaw/plugin-sdk/provider-model-shared";
 import { OMLX_API_KEY_ENV_VAR, OMLX_LOCAL_API_KEY, OMLX_PROVIDER_ID } from "./defaults.js";
+
+function hasOmlxAuthorization(
+  providerConfig: ModelProviderConfig | undefined,
+  modelHeaders?: Record<string, string>,
+): boolean {
+  const auth = providerConfig?.request?.auth;
+  if (auth?.mode === "authorization-bearer") {
+    return true;
+  }
+  if (auth?.mode === "header") {
+    // Request auth replaces earlier Authorization headers, including with a custom header.
+    return auth.headerName.trim().toLowerCase() === "authorization";
+  }
+  return [providerConfig?.headers, providerConfig?.request?.headers, modelHeaders].some((headers) =>
+    Object.entries(headers ?? {}).some(
+      ([name, value]) =>
+        name.trim().toLowerCase() === "authorization" &&
+        Boolean(typeof value === "string" ? value.trim() : value),
+    ),
+  );
+}
 
 export default {
   id: OMLX_PROVIDER_ID,
@@ -16,11 +40,9 @@ export default {
   },
   resolveSyntheticAuth: ({ providerConfig }) => {
     if (
-      providerConfig?.apiKey ||
+      (providerConfig?.apiKey && providerConfig.apiKey !== OMLX_LOCAL_API_KEY) ||
       (providerConfig?.request?.auth && providerConfig.request.auth.mode !== "provider-default") ||
-      Object.keys({ ...providerConfig?.headers, ...providerConfig?.request?.headers }).some(
-        (name) => name.toLowerCase() === "authorization",
-      )
+      hasOmlxAuthorization(providerConfig)
     ) {
       return undefined;
     }
@@ -29,5 +51,18 @@ export default {
       source: "oMLX local server",
       mode: "api-key",
     };
+  },
+  prepareRuntimeAuth: async ({ config, provider, model }) => {
+    const { CUSTOM_LOCAL_AUTH_MARKER, findNormalizedProviderValue } =
+      await import("openclaw/plugin-sdk/provider-auth");
+    const providerConfig = findNormalizedProviderValue(config?.models?.providers, provider);
+    if (
+      providerConfig?.apiKey !== OMLX_LOCAL_API_KEY ||
+      hasOmlxAuthorization(providerConfig, model.headers)
+    ) {
+      return undefined;
+    }
+    // Explicit keyless setup must not inherit a previous endpoint's stored credential.
+    return { apiKey: CUSTOM_LOCAL_AUTH_MARKER };
   },
 } satisfies ProviderPlugin;

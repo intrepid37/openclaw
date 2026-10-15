@@ -31,9 +31,16 @@ export async function resolveOmlxHeaders(
   configured: ModelProviderConfig | undefined,
 ): Promise<{ headers: Record<string, string>; hasHeaderAuth: boolean }> {
   const resolve = (value: unknown, path: string) => resolveOmlxSecret(params, value, path);
-  const resolveHeaders = async (inputs: Record<string, unknown> | undefined, path: string) => {
+  const resolveHeaders = async (
+    inputs: Record<string, unknown> | undefined,
+    path: string,
+    replacedNames: ReadonlySet<string>,
+  ) => {
     const resolved: Record<string, string> = {};
     for (const [name, value] of Object.entries(inputs ?? {})) {
+      if (replacedNames.has(name.trim().toLowerCase())) {
+        continue;
+      }
       const header = await resolve(value, `${path}.${name}`);
       if (header) {
         resolved[name] = header;
@@ -54,16 +61,34 @@ export async function resolveOmlxHeaders(
             value: (await resolve(auth.value, "models.providers.omlx.request.auth.value")) ?? "",
           }
         : auth;
+  const authHeaderNames = new Set<string>();
+  if (auth && auth.mode !== "provider-default") {
+    authHeaderNames.add("authorization");
+    if (auth.mode === "header") {
+      authHeaderNames.add(auth.headerName.trim().toLowerCase());
+    }
+  }
+  // Resolve only effective headers so obsolete secrets cannot block an override.
+  const requestHeaders = await resolveHeaders(
+    configured?.request?.headers,
+    "models.providers.omlx.request.headers",
+    authHeaderNames,
+  );
+  const replacedDefaults = new Set([
+    ...authHeaderNames,
+    ...Object.keys(requestHeaders).map((name) => name.trim().toLowerCase()),
+  ]);
   const headers =
     resolveProviderRequestHeaders({
       provider: OMLX_PROVIDER_ID,
       baseUrl: configured?.baseUrl ?? OMLX_DEFAULT_BASE_URL,
-      defaultHeaders: await resolveHeaders(configured?.headers, "models.providers.omlx.headers"),
+      defaultHeaders: await resolveHeaders(
+        configured?.headers,
+        "models.providers.omlx.headers",
+        replacedDefaults,
+      ),
       request: sanitizeConfiguredModelProviderRequest({
-        headers: await resolveHeaders(
-          configured?.request?.headers,
-          "models.providers.omlx.request.headers",
-        ),
+        headers: requestHeaders,
         auth: resolvedAuth,
       }),
     }) ?? {};

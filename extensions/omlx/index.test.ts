@@ -1,5 +1,6 @@
 import type { OpenClawConfig } from "openclaw/plugin-sdk/plugin-entry";
 import { capturePluginRegistration } from "openclaw/plugin-sdk/plugin-test-runtime";
+import type { ModelProviderConfig } from "openclaw/plugin-sdk/provider-model-shared";
 import { withOpenClawTestState } from "openclaw/plugin-sdk/test-state";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import plugin from "./index.js";
@@ -250,7 +251,12 @@ describe("oMLX registered embedding provider", () => {
     ]);
   });
 
-  it.each([
+  it.each<{
+    name: string;
+    request: NonNullable<ModelProviderConfig["request"]>;
+    authorization: string | null;
+    customKey: string | null;
+  }>([
     {
       name: "request headers",
       request: { headers: { authorization: "Bearer fixture-omlx-key" } },
@@ -260,7 +266,8 @@ describe("oMLX registered embedding provider", () => {
     {
       name: "bearer authentication",
       request: {
-        auth: { mode: "authorization-bearer" as const, token: "${OMLX_EMBED_TEST_KEY}" },
+        headers: { authorization: "${OMLX_STALE_TEST_AUTH}" },
+        auth: { mode: "authorization-bearer", token: "${OMLX_EMBED_TEST_KEY}" },
       },
       authorization: "Bearer fixture-omlx-key",
       customKey: null,
@@ -268,8 +275,12 @@ describe("oMLX registered embedding provider", () => {
     {
       name: "custom header authentication",
       request: {
+        headers: {
+          authorization: "${OMLX_STALE_TEST_AUTH}",
+          "X-oMLX-Key": "${OMLX_STALE_TEST_AUTH}",
+        },
         auth: {
-          mode: "header" as const,
+          mode: "header",
           headerName: "X-oMLX-Key",
           value: "${OMLX_EMBED_TEST_KEY}",
         },
@@ -279,6 +290,7 @@ describe("oMLX registered embedding provider", () => {
     },
   ])("inherits $name for embeddings", async ({ request, authorization, customKey }) => {
     vi.stubEnv("OMLX_EMBED_TEST_KEY", "fixture-omlx-key");
+    vi.stubEnv("OMLX_STALE_TEST_AUTH", undefined);
     let observedHeaders = new Headers();
     const fetch = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
       observedHeaders = new Headers(init?.headers);
@@ -293,7 +305,7 @@ describe("oMLX registered embedding provider", () => {
               baseUrl: "http://127.0.0.1:8000/v1",
               api: "openai-completions",
               apiKey: "OMLX_API_KEY",
-              headers: { Authorization: "Bearer stale-header" },
+              headers: { Authorization: "${OMLX_STALE_TEST_AUTH}" },
               request,
               models: [],
             },
@@ -306,6 +318,29 @@ describe("oMLX registered embedding provider", () => {
     expect(fetch).toHaveBeenCalledOnce();
     expect(observedHeaders.get("authorization")).toBe(authorization);
     expect(observedHeaders.get("x-omlx-key")).toBe(customKey);
+  });
+
+  it("rejects an unavailable effective header before sending embeddings", async () => {
+    vi.stubEnv("OMLX_STALE_TEST_AUTH", undefined);
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+    await expect(
+      embeddingAdapter().create({
+        config: {
+          models: {
+            providers: {
+              omlx: {
+                baseUrl: "http://127.0.0.1:8000/v1",
+                headers: { Authorization: "${OMLX_STALE_TEST_AUTH}" },
+                models: [],
+              },
+            },
+          },
+        },
+        model: "fixture-embedding",
+      }),
+    ).rejects.toThrow(/OMLX_STALE_TEST_AUTH/);
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it("preserves an explicit private-network denial", async () => {

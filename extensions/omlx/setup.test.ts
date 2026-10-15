@@ -1,14 +1,20 @@
-import type { ProviderAppGuidedSetupContext } from "openclaw/plugin-sdk/plugin-entry";
+import type {
+  ProviderAppGuidedSetupContext,
+  ProviderRuntimeModel,
+} from "openclaw/plugin-sdk/plugin-entry";
 import {
   createQueuedWizardPrompter,
   createNonExitingRuntimeEnv,
+  capturePluginRegistration,
 } from "openclaw/plugin-sdk/plugin-test-runtime";
+import { CUSTOM_LOCAL_AUTH_MARKER } from "openclaw/plugin-sdk/provider-auth";
 import type {
   ProviderAuthContext,
   ProviderAuthMethodNonInteractiveContext,
   ProviderCatalogContext,
 } from "openclaw/plugin-sdk/provider-setup";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import plugin from "./index.js";
 import {
   configureOmlxInteractive,
   configureOmlxNonInteractive,
@@ -47,9 +53,9 @@ function catalogContext(): ProviderCatalogContext {
   };
 }
 
-function interactiveContext(key = ""): ProviderAuthContext {
+function interactiveContext(key = "", baseUrl = "http://127.0.0.1:8000/v1/"): ProviderAuthContext {
   const { prompter } = createQueuedWizardPrompter({
-    textValues: ["http://127.0.0.1:8000/v1/", key],
+    textValues: [baseUrl, key],
     selectValues: [modelId],
   });
   return {
@@ -327,6 +333,109 @@ describe("oMLX setup through the inference catalog", () => {
     await expect(validateOmlxNonInteractive(ctx)).resolves.toBe(false);
     await expect(configureOmlxNonInteractive(ctx)).resolves.toBeNull();
     expect(ctx.toApiKeyCredential).not.toHaveBeenCalled();
+  });
+
+  it("prepares keyless remote chat without inheriting the previous server credential", async () => {
+    fixture();
+    const ctx = interactiveContext("", "https://omlx.example.test/v1");
+    ctx.config = {
+      auth: { profiles: { "omlx:default": { provider: "omlx", mode: "api_key" } } },
+      models: {
+        providers: {
+          omlx: {
+            baseUrl: "http://127.0.0.1:9000/v1",
+            apiKey: "old-server-key",
+            models: [],
+          },
+        },
+      },
+    };
+    const result = await configureOmlxInteractive(ctx);
+    const providerConfig = result.configPatch?.models?.providers?.omlx;
+    if (!providerConfig) {
+      throw new Error("missing configured oMLX provider");
+    }
+    const config = { ...ctx.config, models: { providers: { omlx: providerConfig } } };
+    const provider = capturePluginRegistration(plugin).providers[0];
+    const model: ProviderRuntimeModel = {
+      id: modelId,
+      name: modelId,
+      provider: "omlx",
+      api: "openai-completions",
+      baseUrl: providerConfig.baseUrl,
+      reasoning: false,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 32_768,
+      maxTokens: 8_192,
+    };
+    const runtimeContext = {
+      config,
+      env: {},
+      provider: "omlx",
+      modelId,
+      model,
+      apiKey: "old-server-key",
+      authMode: "api-key",
+      profileId: "omlx:default",
+    };
+    expect(providerConfig.apiKey).toBe("omlx-local");
+    expect(await provider?.prepareRuntimeAuth?.(runtimeContext)).toEqual({
+      apiKey: CUSTOM_LOCAL_AUTH_MARKER,
+    });
+    expect(
+      provider?.resolveSyntheticAuth?.({
+        provider: "omlx",
+        config: { models: config.models },
+        providerConfig,
+      }),
+    ).toEqual({
+      apiKey: "omlx-local",
+      source: "oMLX local server",
+      mode: "api-key",
+    });
+    expect(
+      await provider?.prepareRuntimeAuth?.({
+        ...runtimeContext,
+        config: {
+          models: { providers: { omlx: { ...providerConfig, headers: { Authorization: "   " } } } },
+        },
+      }),
+    ).toEqual({ apiKey: CUSTOM_LOCAL_AUTH_MARKER });
+    expect(
+      await provider?.prepareRuntimeAuth?.({
+        ...runtimeContext,
+        model: { ...model, headers: { "X-Api-Key": "new-header-key" } },
+        config: {
+          models: {
+            providers: {
+              omlx: {
+                ...providerConfig,
+                headers: { Authorization: "Bearer old-server-key" },
+                request: {
+                  auth: { mode: "header", headerName: "X-Api-Key", value: "new-header-key" },
+                },
+              },
+            },
+          },
+        },
+      }),
+    ).toEqual({ apiKey: CUSTOM_LOCAL_AUTH_MARKER });
+    for (const authenticated of [
+      { ...providerConfig, apiKey: "new-server-key" },
+      { ...providerConfig, headers: { Authorization: "Bearer new-header-key" } },
+      {
+        ...providerConfig,
+        request: { auth: { mode: "authorization-bearer" as const, token: "new-header-key" } },
+      },
+    ]) {
+      expect(
+        await provider?.prepareRuntimeAuth?.({
+          ...runtimeContext,
+          config: { models: { providers: { omlx: authenticated } } },
+        }),
+      ).toBeUndefined();
+    }
   });
 
   it("reports a non-string model option before discovery or credential persistence", async () => {
