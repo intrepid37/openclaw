@@ -14,7 +14,7 @@ import {
   SESSIONS_LIST_TRANSCRIPT_LIMIT,
 } from "../shared/session-list-limits.js";
 import { runSynchronousWork, type SynchronousWork } from "../shared/synchronous-work.js";
-import { resolveAssistantIdentity } from "./assistant-identity.js";
+import { resolveAssistantIdentityName } from "./assistant-identity.js";
 import { prepareOperatorModelPresentation } from "./operator-model-presentation.js";
 import { gatewayClientSessionCreator } from "./server-methods/gateway-client-identity.js";
 import { createVisibleActiveSessionRunProjector } from "./server-methods/session-active-runs.js";
@@ -37,6 +37,7 @@ import {
 } from "./session-row-presentation.js";
 import {
   selectionRow,
+  type Lookup,
   type Query as SessionRowQuery,
   type SelectionRow as SelectionTarget,
 } from "./session-row-projection-record.js";
@@ -102,7 +103,7 @@ export function* selectSessionEntries(
 function buildSessionsListResult(
   params: Pick<SessionListFilterParams, "cfg" | "opts" | "modelCatalog">,
   list: SessionEntrySelection & { now: number; storePath: string },
-  sessions: GatewaySessionRow[],
+  { sessions, previousRows }: { sessions: GatewaySessionRow[]; previousRows?: GatewaySessionRow[] },
   policyConfig: OpenClawConfig,
   client?: GatewayClient | null,
 ): SessionsListResult {
@@ -157,7 +158,7 @@ function buildSessionsListResult(
       : {}),
     defaults: policy ? policy.defaults(defaults) : defaults,
     ...(opts.rowMode === "sidebar"
-      ? shareSidebarSessionRows(sessions, opts.ifRowsRevision)
+      ? shareSidebarSessionRows(sessions, opts.ifRowsRevision, previousRows)
       : { sessions }),
   };
 }
@@ -331,7 +332,7 @@ export async function prepareSessionSearchIdentityNames(
   }
   const identities = await pMap(
     [...agentIds],
-    (agentId) => resolveAssistantIdentity({ cfg: prepared.cfg, agentId }),
+    (agentId) => resolveAssistantIdentityName({ cfg: prepared.cfg, agentId }),
     { concurrency: 4 },
   );
   return {
@@ -503,18 +504,18 @@ export async function listProjectedSessions(params: {
       projection,
       () => {
         page = selectPage();
-        return page.selection.entries.flatMap(([key]) => {
+        const queries: Lookup[] = [];
+        for (const [key] of page.selection.entries) {
           const target = page.prepared.getTarget(key);
-          return target
-            ? [
-                {
-                  agentId: target.agentId,
-                  key: target.key,
-                  storePath: target.storeTarget.storePath,
-                },
-              ]
-            : [];
-        });
+          if (target) {
+            queries.push({
+              agentId: target.agentId,
+              key: target.key,
+              storePath: target.storeTarget.storePath,
+            });
+          }
+        }
+        return queries;
       },
       () => {
         const resumed = performance.now();
@@ -527,10 +528,12 @@ export async function listProjectedSessions(params: {
         try {
           let materializedRowCount = 0;
           projection.setArchivePageSize(selection.entries.length);
-          const sessions = selection.entries.flatMap(([key], index) => {
+          const sessions: GatewaySessionRow[] = [];
+          for (let index = 0; index < selection.entries.length; index++) {
+            const [key] = selection.entries[index]!;
             const target = getTarget(key);
             if (!target) {
-              return [];
+              continue;
             }
             const includeTranscriptFields =
               index < SESSIONS_LIST_TRANSCRIPT_LIMIT + selection.ownerCount;
@@ -550,23 +553,24 @@ export async function listProjectedSessions(params: {
               },
             );
             if (!sharedRow || !record) {
-              return [];
+              continue;
             }
             if ((record.materializedSequence ?? 0) > materializedBefore) {
               materializedRowCount++;
             }
             if (params.acceptsSerializedJson) {
-              return [sharedRow];
+              sessions.push(sharedRow);
+            } else {
+              const row = { ...sharedRow };
+              bindSessionListRowRead(row, { projection, record, client });
+              sessions.push(row);
             }
-            const row = { ...sharedRow };
-            bindSessionListRowRead(row, { projection, record, client });
-            return [row];
-          });
+          }
           diagnostics?.mark("decoration");
           const result = buildSessionsListResult(
             prepared,
             { ...selection, now, storePath: prepared.storePath },
-            params.acceptsSerializedJson ? presentation.list(sessions, opts) : sessions,
+            params.acceptsSerializedJson ? presentation.list(sessions, opts) : { sessions },
             context?.getCommittedRuntimeConfig?.() ?? cfg,
             client,
           );

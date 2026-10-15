@@ -254,6 +254,22 @@ pending wizard or approval before opening the creation choices.
 If team creation stops partway through, the custodian reports the retained
 agents so you can inspect them before creating the missing members.
 
+## Download files
+
+In the **Files** panel, hover over a file or focus its row to reveal **Download file**
+next to Preview and Copy path. The same action is available in the file preview
+toolbar. It saves the original file through your browser without opening another
+page; unsaved editor changes are not included. Files stream directly to the browser's
+download manager, with no separate download-size cap. The inline-preview limit
+still applies, but files too large to preview retain their download action.
+Folders are not downloadable. Downloads require the Control UI and its Gateway
+connection to share an origin (including a same-origin Gateway proxy).
+
+Downloads use the session's existing file-read access, including managed repository
+workspaces. Provider-backed node workspaces whose bridge only supports whole-file
+reads do not yet support downloads. Authorization errors appear in the UI; transfer
+progress and failures appear in your browser's download manager.
+
 ## Take a photo in chat
 
 Choose **Add attachment → Take photo** in chat or New Session to open a camera
@@ -333,9 +349,12 @@ agent's identity, model, current work status, last activity, and a preview from 
 main chat. **Open chat** opens that agent's
 main session. Working agents appear first, followed by the most recently active.
 
-**Manage agents** opens `/settings/agents`. **New agent** opens the existing
-agent creation flow when available, or agent settings otherwise. `/agents` now
-opens the roster; agent configuration remains at `/settings/agents`.
+**Manage agents** opens `/settings/agents`. **New agent** requires the Gateway's
+`openclaw.chat` method and `operator.admin` scope. Without that access, the Agents
+home and settings controls stay visible but disabled; their tooltip explains how
+to pair with the required scope and reconnect. Opening the custodian directly
+also explains missing access instead of silently waiting. `/agents` opens the
+roster; agent configuration remains at `/settings/agents`.
 
 To browse sessions across agents, choose the **Show all** tile in the agent
 switcher. It appears with two or more agents and groups their own avatars: two

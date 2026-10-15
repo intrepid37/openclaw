@@ -179,6 +179,9 @@ For traces, logs, OTLP push, and OpenTelemetry GenAI semantic attributes, see [O
 | `openclaw_worker_request_seconds`                         | histogram | `kind`, `request_class`                                                                   |
 | `openclaw_worker_heap_sampled_count`                      | gauge     | none (aggregate), `script`                                                                |
 | `openclaw_worker_heap_used_bytes`                         | gauge     | `script`                                                                                  |
+| `openclaw_worker_external_bytes`                          | gauge     | `script`                                                                                  |
+| `openclaw_worker_array_buffers_bytes`                     | gauge     | `script`                                                                                  |
+| `openclaw_code_mode_worker_memory_bytes`                  | gauge     | `slot`, `kind` (`external`, `array_buffers`)                                              |
 | `openclaw_worker_started_total`                           | counter   | `script`                                                                                  |
 | `openclaw_worker_retired_total`                           | counter   | `script`, `reason`                                                                        |
 | `openclaw_worker_messages_total`                          | counter   | `kind`, `direction`                                                                       |
@@ -576,7 +579,13 @@ fresh sample, while `openclaw_worker_heap_sampled_count` counts its fresh sample
 The original unlabeled series retain the aggregate totals. Select
 `{script!=""}` when summing script series to avoid counting the aggregate again.
 `openclaw_worker_heap_used_bytes{script="..."}` sums fresh heap samples for each
-Worker script. Labels use a fixed allowlist of runtime-entrypoint, pooled, and bundled plugin Worker basenames, normalized to
+Worker script. `openclaw_worker_external_bytes` and `openclaw_worker_array_buffers_bytes`
+sum the corresponding available counters from those same samples by `script`.
+ArrayBuffer bytes are included in external memory; do not add them together.
+Native-only heap samples provide external memory but no ArrayBuffer count, so
+ArrayBuffer totals can cover fewer Workers than the heap sample count. Missing
+counters are omitted, while measured zero bytes are exported as zero.
+Labels use a fixed allowlist of runtime-entrypoint, pooled, and bundled plugin Worker basenames, normalized to
 `.js` in source and packaged runs; unknown, eval, and unwrapped third-party Workers
 use `other`. Full paths and eval source are never recorded. A script's series
 disappears when it has no live, fresh samples; its count series disappear when
@@ -595,7 +604,11 @@ separate SQLite handle retention window remains 30 minutes.
 `openclaw_worker_retired_total{script="...",reason="..."}` expose cumulative
 starts and confirmed native exits through the same heartbeat. Retirement reasons
 are `idle_timeout`, `memory_pressure`, `closed`, `rotation`, `cancelled`,
-`failure`, or `exit` when an owner did not specify a reason. A retirement request
+`failure`, `eviction`, `idle-expiry`, `dispose`, `shutdown`, `crash`, `gc-thrash`,
+or `exit` when an owner did not specify a reason. Code Mode distinguishes warm-cache
+eviction, idle expiry, explicit disposal, host shutdown, native crash, and GC-watchdog
+retirement; see [Code Mode executors](/tools/code-mode/executors).
+A retirement request
 does not count until the Worker exits; failed termination and retries do not
 double-count. Counters survive exporter restarts and reset with the process.
 Use `60 * rate(openclaw_worker_started_total[5m])` for starts per minute by
@@ -666,6 +679,13 @@ reported by Node.js for the main isolate and instrumented workers. `kind` is
 `scavenge` (minor), `mark_sweep_compact` (major), `incremental`, or
 `weak_processing`, taken from the native entry's `detail.kind`. `thread` is `main`
 or an allowlisted worker script basename; unknown worker scripts use `other`.
+The `reason` label maps Node's `detail.flags` to `none`, `forced`,
+`synchronous_phantom_processing`, `all_available_garbage`, `all_external_memory`,
+`schedule_idle`, or `construct_retained`. Combined flags, unknown flags, and
+SDK producers without flags use `other`. These are Node GC callback flags,
+not V8's complete internal reason for starting a collection; `none` means no
+callback flags were set, not that no collection occurred.
+
 Code Mode Node workers also carry a reusable `slot` label from 1 through 64.
 The worker registry holds a slot until native worker exit, including pending
 retirement, then makes it available for reuse. Concurrent workers beyond 64
@@ -673,7 +693,7 @@ retain script-level attribution without a slot; other worker scripts also retain
 script-level attribution. Slots are not thread IDs or session identities.
 Counters accumulate across occupants of a slot, so a rate window can span more
 than one worker. Older SDK
-producers that omit attribution use `kind="unknown",thread="main"`. SDK-provided
+producers that omit attribution use `kind="unknown",reason="other",thread="main"`. SDK-provided
 unknown kinds and worker names fold into `unknown` and `other` at event emission.
 Each observation is one
 GC entry, not CPU time, allocated bytes, or a guaranteed stop-the-world pause.
@@ -702,7 +722,7 @@ that port, nested workers outside this registry, and runtimes without native GC
 entries are not covered. Worker exit can lose a final undelivered batch.
 
 The histogram's `_count` and `_sum` are the collection count and total elapsed
-seconds for each label pair. Existing queries that need a single total should
+seconds for each label set. Existing queries that need a single total should
 aggregate the new labels; select `thread="main"` to retain main-isolate scope:
 
 ```promql
@@ -714,7 +734,9 @@ To locate a busy Code Mode isolate and compare its latest used heap with its
 actual V8 limit:
 
 ```promql
-60 * rate(openclaw_gc_duration_seconds_count{thread="code-mode-node.worker.js",kind="mark_sweep_compact",slot!=""}[5m])
+60 * sum by (slot, reason) (
+  rate(openclaw_gc_duration_seconds_count{thread="code-mode-node.worker.js",kind="mark_sweep_compact",slot!=""}[5m])
+)
 openclaw_code_mode_worker_heap_bytes{kind="used"}
   / ignoring(kind) openclaw_code_mode_worker_heap_bytes{kind="limit"}
 ```
@@ -725,6 +747,13 @@ the next memory sample after worker exit or stale sampling; missing limits are
 omitted on runtimes without V8. The script-level worker heap metrics continue to
 include all workers, including slot overflow. No additional heap interrupt or
 sampling timer is introduced.
+
+`openclaw_code_mode_worker_memory_bytes` exposes the same slots with
+`kind="external"` and `kind="array_buffers"`, using the counters already carried
+by the memory heartbeat. Missing counters are omitted, and gauges disappear on
+the next memory sample after exit or stale sampling, just like the heap gauges.
+Slot overflow remains included in the script-level totals. These counters do
+not account for every native allocation or allocator arena.
 
 OpenTelemetry's `openclaw.gc.duration_ms` uses the corresponding
 `openclaw.gc.kind`, `openclaw.gc.thread`, and optional `openclaw.gc.worker_slot`
