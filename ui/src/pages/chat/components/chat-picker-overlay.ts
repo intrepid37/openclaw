@@ -88,7 +88,6 @@ function bindChatPickerOverlay(
     if (trigger.getAttribute("aria-disabled") === "true") {
       return;
     }
-    trigger.focus({ preventScroll: true });
     details.open = !details.open;
     toggle();
   };
