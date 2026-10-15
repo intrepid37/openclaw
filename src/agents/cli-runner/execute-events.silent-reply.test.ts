@@ -116,6 +116,7 @@ describe("CLI completed reply publication", () => {
             text: "",
             delta: "",
             replace: true,
+            retractCurrentPreview: true,
           },
         },
         {

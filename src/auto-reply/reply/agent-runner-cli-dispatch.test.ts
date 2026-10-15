@@ -4,6 +4,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { awaitGateBeforeSettlement, createDeferred } from "../../../test/helpers/promise.js";
 import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
 import { withTestAdmittedRunContext } from "../../agents/admitted-run-context.test-support.js";
+import { createCliEventHandlers } from "../../agents/cli-runner/execute-events.js";
+import {
+  buildContext,
+  buildToolTracking,
+} from "../../agents/cli-runner/execute-events.tool-result-args.test-support.js";
 import { clearCliSessionInStore } from "../../agents/cli-session-store.js";
 import type { EmbeddedAgentRunResult } from "../../agents/embedded-agent-runner/types.js";
 import { createAgentRunRestartAbortError } from "../../agents/run-termination.js";
@@ -357,39 +362,59 @@ describe("runCliAgentWithLifecycle", () => {
     ]);
   });
 
-  it("forwards live previews and an empty replacement without retaining reasoning", async () => {
+  it("retracts the current CLI preview while retaining earlier accepted replies", async () => {
     const runId = "run-silent-replacement";
+    const earlier = "Earlier accepted answer.";
+    const preview = "Considering whether another reply is needed.";
+    const retry = "Here is the required answer.";
     cliDispatchState.runCliAgentMock.mockImplementationOnce(async () => {
-      for (const event of [
-        { stream: "assistant", data: { text: "Considering.", delta: "Considering." } },
-        { stream: "thinking", data: { text: "Checking.", isReasoningSnapshot: true } },
-        { stream: "assistant", data: { text: "", delta: "", replace: true } },
-        { stream: "thinking", data: { text: "", isReasoningSnapshot: true } },
-      ] as const) {
-        emitAgentEvent({ runId, ...event });
-      }
-      return {
-        payloads: [],
-        meta: { durationMs: 1, finalAssistantVisibleText: "" },
-      } satisfies EmbeddedAgentRunResult;
+      const handlers = createCliEventHandlers({
+        context: buildContext(runId),
+        toolTracking: buildToolTracking(),
+        getRunState: () => ({ failed: false, error: undefined }),
+      });
+      handlers.emitCliCompletedReply(earlier, 0);
+      handlers.emitCliThinkingDelta({ text: "Checking.", delta: "Checking." });
+      handlers.emitCliAssistantDelta({ text: preview, delta: preview });
+      handlers.emitCliCompletedReply(`${preview}\nNO_REPLY`, 1);
+      handlers.emitCliAssistantDelta({ text: retry, delta: retry });
+      handlers.emitCliCompletedReply(retry, 2);
+      return { payloads: [], meta: {} } satisfies EmbeddedAgentRunResult;
     });
     const onAssistantText = vi.fn<(payload: PartialReplyPayload) => Promise<void>>(async () => {});
+    const onCompletedReply = vi.fn(async (_text: string, _index: number) => {});
     const onReasoningText = vi.fn<(payload: ReasoningTextPayload) => Promise<void>>(async () => {});
-    const result = await runCliAgentWithLifecycle({
-      runId,
-      onAssistantText,
-      onReasoningText,
-      runParams: createRunParams(runId),
+    const wireReplacements: unknown[] = [];
+    const stop = onAgentEvent((event) => {
+      if (event.runId === runId && event.stream === "assistant" && event.data.replace === true) {
+        wireReplacements.push(event.data.text);
+      }
     });
+    try {
+      await runCliAgentWithLifecycle({
+        runId,
+        onAssistantText,
+        onCompletedReply,
+        onReasoningText,
+        runParams: createRunParams(runId),
+      });
+    } finally {
+      stop();
+    }
     expect(onAssistantText.mock.calls.map(([payload]) => payload)).toEqual([
-      { text: "Considering.", delta: "Considering." },
+      { text: preview, delta: preview },
       { text: "", delta: "", replace: true },
+      { text: retry, delta: retry },
     ]);
+    expect(onCompletedReply.mock.calls).toEqual([
+      [earlier, 0],
+      [retry, 2],
+    ]);
+    expect(wireReplacements).toEqual([earlier]);
     expect(onReasoningText.mock.calls.map(([payload]) => payload)).toEqual([
-      { text: "Checking.", isReasoningSnapshot: true },
+      { text: "Checking." },
       { text: "", isReasoningSnapshot: true },
     ]);
-    expect(result.payloads).toEqual([]);
   });
 
   it.each(["Last answer.", ""])(

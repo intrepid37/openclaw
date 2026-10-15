@@ -415,11 +415,13 @@ export function createCliEventHandlers(params: {
     ).text;
     const parsed = parseReplyDirectives(completedText);
     if (parsed.hasSilentIntent) {
+      // Restore cumulative Gateway text while channels retract only the current draft.
       emitLiveEvent("assistant", () => ({
         itemId: cliAssistantItemId(runParams.runId),
         text: acceptedReplyText,
         delta: "",
         replace: true,
+        retractCurrentPreview: true,
       }));
       emitLiveEvent("thinking", () => ({
         itemId: `cli-thinking:${runParams.runId}`,

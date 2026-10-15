@@ -363,7 +363,7 @@ async function runCliAgentWithLifecycleInternal(
         return {
           completed: false,
           partial: {
-            text,
+            text: evt.data.retractCurrentPreview === true ? "" : text,
             ...(typeof evt.data.delta === "string" ? { delta: evt.data.delta } : {}),
             ...(evt.data.replace === true ? { replace: true } : {}),
           },
