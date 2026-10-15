@@ -15,8 +15,8 @@ import {
 } from "./chat-pane.test-support.ts";
 import { openSlot } from "./sidebar-layout.ts";
 
-async function selectPanel(container: HTMLElement, value: string) {
-  const menu = await openChatLayoutMenu({
+async function openPanelMenu(container: HTMLElement) {
+  return openChatLayoutMenu({
     container,
     click: async (element) => {
       element.click();
@@ -24,6 +24,10 @@ async function selectPanel(container: HTMLElement, value: string) {
       flush();
     },
   });
+}
+
+async function selectPanel(container: HTMLElement, value: string) {
+  const menu = await openPanelMenu(container);
   const item = menu.querySelector<HTMLButtonElement>(`button[data-value="${value}"]`);
   if (!item) {
     throw new Error(`Expected Layout panel action: ${value}`);
@@ -216,6 +220,7 @@ describe("chat pane terminal action", () => {
       ];
       for (const testCase of targetCases) {
         renderDesktopHeader(testCase.session);
+        await openPanelMenu(container);
         expect(
           container.querySelector(
             'button[aria-label="Toggle desktop panel"]:not([role^="menuitem"])',
@@ -236,6 +241,7 @@ describe("chat pane terminal action", () => {
           execNode: "must-not-fall-back",
           placement: placement as GatewaySessionRow["placement"],
         });
+        await openPanelMenu(container);
         expect(
           container.querySelector(
             'button[aria-label="Toggle desktop panel"]:not([role^="menuitem"])',
@@ -245,6 +251,7 @@ describe("chat pane terminal action", () => {
       }
 
       renderDesktopHeader(undefined);
+      await openPanelMenu(container);
       expect(
         container.querySelector(
           'button[aria-label="Toggle desktop panel"]:not([role^="menuitem"])',
@@ -278,12 +285,14 @@ describe("chat pane terminal action", () => {
 
     state.browserPanelAvailable = false;
     renderHeader();
+    await openPanelMenu(container);
     expect(container.querySelector(".chat-browser-panel-toggle")).toBeNull();
     expect(panelActionIds()).not.toContain("browser");
 
     state.browserPanelAvailable = true;
     const onToggleBrowser = vi.fn();
     paint(session, { ...createPaneHeaderWorkspaceFixture(state), onToggleBrowser });
+    await openPanelMenu(container);
     expect(panelActionIds()).toContain("browser");
     await selectPanel(container, "browser");
     await waitForSolid(() => expect(onToggleBrowser).toHaveBeenCalledOnce());

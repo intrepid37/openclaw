@@ -228,9 +228,14 @@ describe("chat pane session menu boundary", () => {
       draw();
       await Promise.resolve();
       flush();
-      const menu = container.querySelector(".chat-pane__layout-menu")!;
-      menu.querySelector<HTMLButtonElement>(".chat-pane__layout-trigger")!.click();
-      flush();
+      const menu = await openChatLayoutMenu({
+        container,
+        click: async (element) => {
+          element.click();
+          await Promise.resolve();
+          flush();
+        },
+      });
       menu.querySelector<HTMLButtonElement>(`[value="session-${slot}"]`)!.click();
       state.updateSidebarLayout(openSlot(state.sidebarLayout, slot));
       draw();

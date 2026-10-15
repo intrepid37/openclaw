@@ -1,7 +1,7 @@
 /* @vitest-environment jsdom */
 import { flush } from "solid-js";
 import { afterEach, expect, it } from "vitest";
-import { mountChatPaneHeader } from "./chat-pane-header.test-support.ts";
+import { mountChatPaneHeader, openNativeMenu } from "./chat-pane-header.test-support.ts";
 
 const containers: HTMLElement[] = [];
 afterEach(() => {
@@ -30,19 +30,17 @@ it("hides one branch and lists multiple branches with the active tip marked", as
     ],
   });
   await multiple.container.querySelector("openclaw-chat-pane-versions-menu")?.updateComplete;
-  const menu = multiple.container.querySelector(".chat-pane__branches-menu");
-  const items = multiple.container.querySelectorAll(".chat-pane__branch-item");
-  const trigger = menu?.querySelector<HTMLButtonElement>(".oc-menu-trigger");
+  const menu = multiple.container.querySelector(".chat-pane__branches-menu")!;
+  const trigger = menu.querySelector<HTMLButtonElement>(".oc-menu-trigger");
   expect(trigger?.classList.contains("chat-pane__branches-trigger")).toBe(true);
+  await openNativeMenu(menu);
+  const items = multiple.container.querySelectorAll(".chat-pane__branch-item");
   expect(items).toHaveLength(2);
   expect(items[0]?.textContent).toContain("Current work");
   expect(items[0]?.getAttribute("data-active")).toBe("true");
   expect(items[0]?.querySelector(".chat-pane__branch-active")).not.toBeNull();
   expect(items[1]?.textContent).toContain("Earlier idea");
 
-  trigger?.click();
-  await Promise.resolve();
-  flush();
   multiple.container.querySelector<HTMLButtonElement>('[data-value="other"]')?.click();
   await Promise.resolve();
   expect(multiple.props.onBranchSelect).toHaveBeenCalledWith("other");
