@@ -324,6 +324,7 @@ async function runPreparedUsageCostWorker(
     const failureKey = (sessionFile: string) =>
       JSON.stringify([location.databasePath, sessionFile]);
     let activeSessionFile: string | undefined;
+    let activeRollups: UsageCostWorkerHostEffects["write"]["input"] | undefined;
     const hostErrors = new Map<number, unknown>();
     let errorSequence = 0;
     try {
@@ -398,6 +399,7 @@ async function runPreparedUsageCostWorker(
                   pruneRows.length = 0;
                   break;
                 case "write":
+                  activeRollups = request.input;
                   output = await requireLock("write cache rows").writeRollup(
                     request.input.map((row) => ({
                       rollupId: row.key,
@@ -424,6 +426,7 @@ async function runPreparedUsageCostWorker(
                       });
                   }
                   activeSessionFile = undefined;
+                  activeRollups = undefined;
                   break;
                 default:
                   throw new Error("Unknown usage worker host request");
@@ -447,13 +450,15 @@ async function runPreparedUsageCostWorker(
       return result;
     } catch (error) {
       let failure = restoreWorkerFailure(error, hostErrors);
-      if (activeSessionFile && !signal?.aborted) {
+      const failedFiles =
+        activeRollups?.map((row) => row.key) ?? (activeSessionFile ? [activeSessionFile] : []);
+      for (const sessionFile of signal?.aborted ? [] : failedFiles) {
         try {
           await failures.register(
-            failureKey(activeSessionFile),
+            failureKey(sessionFile),
             {
               agentId: location.agentId,
-              sessionFile: activeSessionFile,
+              sessionFile,
               failedAt: Date.now(),
               reason: "Usage refresh failed; cached totals may be incomplete. Check Gateway logs.",
             },
