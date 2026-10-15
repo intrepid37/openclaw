@@ -1,4 +1,3 @@
-// Windows database path tests exercise canonical state lifecycles beyond MAX_PATH.
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -12,6 +11,8 @@ import {
   updateStateSchemaVersionsMatch,
 } from "../infra/update-candidate-state.js";
 import { createUpdateRun, finishUpdateRun } from "../infra/update-run-ledger.js";
+// Windows database path tests exercise canonical state lifecycles beyond MAX_PATH.
+import { requireNativeSqliteDatabase } from "../test-utils/native-sqlite.js";
 import { withOpenClawAgentDatabaseReadOnly } from "./openclaw-agent-db-readonly.js";
 import {
   closeOpenClawAgentDatabasesForTest,
@@ -140,7 +141,7 @@ describe("OpenClaw database paths on Windows", () => {
       const env = { OPENCLAW_STATE_DIR: tempDirs.make("openclaw-native-registration-") };
       const options = { agentId: "main", env };
       const first = openOpenClawAgentDatabase(options);
-      const nativeFilename = first.db.location();
+      const nativeFilename = requireNativeSqliteDatabase(first.db).location();
       expect(nativeFilename).toBe(path.toNamespacedPath(first.path));
       if (nativeFilename === null) {
         throw new Error("Expected a file-backed database");

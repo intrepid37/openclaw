@@ -359,6 +359,7 @@ src/config/zod-schema.database.ts
 src/infra/database-engine/adapters.ts
 src/infra/database-engine/admission-scope.ts
 src/infra/database-engine/context.ts
+src/infra/database-engine/index-hint.ts
 src/infra/database-engine/json-values.ts
 src/infra/database-engine/observation.ts
 src/infra/database-engine/open.ts
@@ -366,6 +367,8 @@ src/infra/database-engine/physical-facts.ts
 src/infra/database-engine/policy.ts
 src/infra/database-engine/postgres-catalog.ts
 src/infra/database-engine/postgres-schema.ts
+src/infra/database-engine/search-capabilities.ts
+src/infra/database-engine/text-bytes.ts
 src/infra/postgres-sync/connection.ts
 src/infra/postgres-sync/protocol.ts
 src/infra/postgres-sync/transaction.ts
@@ -686,6 +689,7 @@ src/config/sessions/session-store-owner.ts
 src/config/sessions/session-store-read-candidates.ts
 src/config/sessions/session-store-target-inventory.ts
 src/config/sessions/session-store-target-runtime.ts
+src/config/sessions/session-worker-execution-source.ts
 src/config/sessions/supported-session-store.ts
 src/config/sessions/session-transcript-projection-error.ts
 src/config/sessions/session-transcript-projection-facts-scope.ts
@@ -1794,6 +1798,7 @@ src/state/openclaw-agent-db-resources.ts
 src/state/openclaw-agent-db-schema-compatibility.ts
 src/state/openclaw-agent-db-schema-helpers.ts
 src/state/openclaw-agent-db-schema-read.ts
+src/state/openclaw-agent-db-schema-refresh.ts
 src/state/openclaw-agent-db-schema.ts
 src/state/openclaw-agent-db-session-migrations.ts
 src/state/openclaw-agent-db-session-nodes-migration.ts
@@ -1802,6 +1807,8 @@ src/state/openclaw-agent-db-terminal.ts
 src/state/openclaw-agent-db-transaction.ts
 src/state/openclaw-agent-db-validation-cache.ts
 src/state/openclaw-agent-db-validation-facts.ts
+src/state/openclaw-agent-db-validation-schema.ts
+src/state/openclaw-agent-db-engine.ts
 src/state/openclaw-agent-db.paths.ts
 src/state/openclaw-agent-db.ts
 src/state/openclaw-agent-db.wal.ts
@@ -1819,6 +1826,7 @@ src/state/openclaw-agent-outbox-sequence-migration.ts
 src/state/openclaw-agent-participants-migration.ts
 src/state/openclaw-agent-pending-inputs-schema.ts
 src/state/openclaw-agent-progress-card-schema.ts
+src/state/openclaw-agent-schema-inspection-operations.worker.ts
 src/state/openclaw-agent-schema-inspection-response.ts
 src/state/openclaw-agent-schema-inspection-worker.ts
 src/state/openclaw-agent-schema.sql
@@ -1897,6 +1905,7 @@ src/state/openclaw-state-db-startup-checkpoint.ts
 src/state/openclaw-state-db-table-retirements.ts
 src/state/openclaw-state-db-task-delivery-recovery.ts
 src/state/openclaw-state-db-transaction.ts
+src/state/postgres-schema.generated/agent-runtime.ts
 src/state/postgres-schema.generated/runtime.ts
 src/state/openclaw-state-db.paths.ts
 src/state/openclaw-state-db.ts

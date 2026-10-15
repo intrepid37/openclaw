@@ -17,6 +17,7 @@ import {
   readPostgresSchema,
   verifyPostgresSchema,
 } from "./postgres-schema.js";
+import { databaseSearchCapabilities } from "./search-capabilities.js";
 import type { DatabaseEngineInput } from "./types.js";
 
 function classifyError(error: unknown): DatabaseErrorKind {
@@ -51,7 +52,7 @@ export const databaseEngineAdapters: {
       write: runSqliteImmediateTransactionSync,
       read: runSqliteDeferredTransactionSync,
     },
-    capabilities: { fullText: "fts5", vector: "sqlite-vec" },
+    capabilities: databaseSearchCapabilities.sqlite,
     schema: {
       // The store's existing SQLite schema/migration owner runs unchanged at open.
       bootstrap: (store) => store.openSqlite(),
@@ -96,7 +97,7 @@ export const databaseEngineAdapters: {
     },
     kysely: getNodeSqliteKysely,
     transactions: { write: runSqliteImmediateTransactionSync, read: runSqliteReadSnapshotSync },
-    capabilities: { fullText: "tsvector", vector: null },
+    capabilities: databaseSearchCapabilities.postgres,
     schema: {
       bootstrap: (store, db) => {
         if (!store.schema.postgres) {

@@ -53,7 +53,11 @@ export interface DatabaseEngineAdapter<Connection extends SqlConnection = SqlCon
   openConnection(store: AdmittedStore): Connection;
   kysely(connection: Connection): Kysely<unknown>;
   transactions: TransactionRecipes<Connection>;
-  capabilities: { fullText: "fts5" | "tsvector" | null; vector: "sqlite-vec" | "pgvector" | null };
+  capabilities: {
+    fullText: "fts5" | "tsvector" | null;
+    vector: "sqlite-vec" | "pgvector" | null;
+    diagnostic?: string;
+  };
   schema: {
     bootstrap(store: AdmittedStore, connection: Connection): void;
     migrate(store: AdmittedStore, from: number, connection: Connection): void;

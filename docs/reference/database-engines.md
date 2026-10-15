@@ -52,20 +52,26 @@ that stores without a PostgreSQL schema remain on SQLite.
 | `database.postgres.connection`   | None         | Required for PostgreSQL. A DSN string or env/file/exec SecretRef; store-backed refs are rejected.                                                                |
 | `database.postgres.schemaPrefix` | `"openclaw"` | Prefix for new store schemas: 1–27 lowercase letters, digits, or underscores, starting with a letter or underscore. Existing anchors keep their recorded schema. |
 
-Shared state, Workboard, Logbook, and Team Reports currently support PostgreSQL. The Gateway resolves
+Shared state, agent databases, Workboard, Logbook, and Team Reports currently support PostgreSQL. The Gateway resolves
 the selected engine before its first shared-state read and retains that immutable
 selection for the lifetime of the process. Reader, writer, and lease workers receive
 the resolved selection explicitly; they never resolve the connection again. A
 different selection in the same process is refused. Restart the process after
 changing the connection or engine.
 
-This is an intermediate state behind the experimental gate: agent databases,
-including session transcripts and agent memory, still use SQLite, as do other
-stores without PostgreSQL support. Incognito storage remains memory-only.
+Stores without PostgreSQL support still use SQLite. Incognito storage remains memory-only.
 The supported PostgreSQL families are:
 
 - **Shared state:** runtime storage for fresh state directories. Porting existing
   shared-state databases is not available yet.
+- **Agent databases:** fresh agent stores, including shared-main auth and explicit
+  agent directories, use the selected engine through the existing agent workers.
+  Transcript payloads are stored as plain JSON on PostgreSQL. Full-text and vector
+  search are unavailable: capabilities are `null` with an admission diagnostic,
+  and search requests fail with `DATABASE_SEARCH_CAPABILITY_UNAVAILABLE`.
+  Existing SQLite agent stores cannot switch engines; agent ports and backup
+  providers are not available yet. PostgreSQL agent schemas support current-version
+  bootstrap only and reject schema drift before exposing the store.
 - **Workboard:** runtime storage, bidirectional database ports, and matched backups.
 - **Logbook:** runtime frames, batches, observations, cards, and standups;
   bidirectional database ports; and matched backups. Frame images remain local
@@ -84,9 +90,9 @@ Changing `database.engine` alone does not migrate existing data. Omitting
 `database` preserves the SQLite default, so ordinary updates require no
 configuration or data migration.
 
-Existing SQLite shared state refuses a PostgreSQL selection and names
+Existing SQLite shared state and agent databases refuse a PostgreSQL selection and name
 `openclaw database port` as the migration path. The port command currently handles
-Workboard, Logbook, and Team Reports; shared-state porting is not available yet. Keep existing
+Workboard, Logbook, and Team Reports; shared-state and agent porting are not available yet. Keep existing
 installations on SQLite until that support lands, or use a fresh state directory
 for experimental PostgreSQL shared state. Do not remove existing data to switch
 engines.

@@ -3,6 +3,7 @@
 // this module owns the query path and schedules the shared reconcile owner
 // when doctor imports or out-of-band writes leave derived rows behind.
 import { sql } from "kysely";
+import { requireDatabaseSearchCapability } from "../../infra/database-engine/search-capabilities.js";
 import {
   executeSqliteQuerySync,
   executeSqliteQueryTakeFirstSync,
@@ -13,6 +14,7 @@ import { runSqliteDeferredTransactionSync } from "../../infra/sqlite-transaction
 import { WorkerTaskError } from "../../infra/worker-task-pool.js";
 import { toAgentStoreSessionKey } from "../../routing/session-key.js";
 import type { OpenClawAgentDatabaseOptions } from "../../state/openclaw-agent-db-contract.js";
+import { agentEngineInput } from "../../state/openclaw-agent-db-engine.js";
 import { withOpenClawAgentDatabaseReadOnly } from "../../state/openclaw-agent-db-readonly.js";
 import type { DB } from "../../state/openclaw-agent-db.generated.js";
 import type { OpenClawAgentDatabaseExecution } from "../../state/openclaw-agent-execution-contract.js";
@@ -85,6 +87,7 @@ export async function searchSessionTranscripts(
     }
     return { hits: [], indexing: false, truncated: false };
   }
+  requireDatabaseSearchCapability(agentEngineInput() ? "postgres" : "sqlite", "fullText");
   const scope = captureLifecycleDatabaseScope(
     preparedDatabase
       ? {
@@ -171,6 +174,7 @@ export function searchSessionTranscriptsReadOnlySync(
   params: SessionTranscriptSearchParams,
   preparedDatabase?: OpenClawAgentDatabaseOptions,
 ): SessionTranscriptSearchReadResult {
+  requireDatabaseSearchCapability(agentEngineInput() ? "postgres" : "sqlite", "fullText");
   const query = validateSessionTranscriptSearchQuery(params.query);
   const scope = preparedDatabase ? { agentId: params.agentId } : resolveSqliteReadScope(params);
   const databaseOptions = preparedDatabase ?? toDatabaseOptions(scope);

@@ -1,10 +1,11 @@
-import type { DatabaseSync } from "node:sqlite";
+import { requireDatabaseSearchCapability } from "../../infra/database-engine/search-capabilities.js";
 import {
   executeSqliteQuerySync,
   getNodeSqliteKysely,
   prepareSqliteQuerySync,
   sqliteStringSet,
 } from "../../infra/kysely-sync.js";
+import { isPostgresSqlConnection, type EngineConnection } from "../../infra/sql-connection.js";
 import {
   sqliteSessionIdWriteScope,
   withSqliteDatabaseWriteScope,
@@ -26,7 +27,10 @@ type TranscriptFtsEntry = {
 };
 
 /** Insert both projection records in the caller's synchronous write transaction. */
-export function createSessionTranscriptFtsInserter(db: DatabaseSync, sessionId: string) {
+export function createSessionTranscriptFtsInserter(db: EngineConnection, sessionId: string) {
+  if (isPostgresSqlConnection(db)) {
+    return (_entry: TranscriptFtsEntry): void => {};
+  }
   const kysely = getNodeSqliteKysely<TranscriptFtsDatabase>(db);
   const insertIdentity = prepareSqliteQuerySync<TranscriptFtsEntry>(db, (parameter) =>
     kysely.insertInto("session_transcript_fts_rows").values({
@@ -55,10 +59,13 @@ export function createSessionTranscriptFtsInserter(db: DatabaseSync, sessionId: 
 
 /** Indexed identities select the work; their delete trigger removes the matching FTS rows. */
 export function deleteSessionTranscriptFtsRowsInTransaction(
-  db: DatabaseSync,
+  db: EngineConnection,
   sessionIds: string | readonly string[],
   options: { messageIds?: readonly string[]; maxRows?: number } = {},
 ): number {
+  if (isPostgresSqlConnection(db)) {
+    return 0;
+  }
   const kysely = getNodeSqliteKysely<TranscriptFtsDatabase>(db);
   let selected = kysely.selectFrom("session_transcript_fts_rows").select("id");
   selected =
@@ -89,7 +96,8 @@ export function deleteSessionTranscriptFtsRowsInTransaction(
 }
 
 /** Stream only one session's FTS content without scanning other sessions' payloads. */
-export function selectSessionTranscriptFtsRows(db: DatabaseSync, sessionId: string) {
+export function selectSessionTranscriptFtsRows(db: EngineConnection, sessionId: string) {
+  requireDatabaseSearchCapability(isPostgresSqlConnection(db) ? "postgres" : "sqlite", "fullText");
   const kysely = getNodeSqliteKysely<TranscriptFtsDatabase>(db);
   return kysely
     .selectFrom("session_transcript_fts")
