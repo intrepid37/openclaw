@@ -40,7 +40,14 @@ it("reserves session geometry before page mount and clears it on other routes", 
   const content = view.container.querySelector("main.content")!;
   expect(content.classList.contains("content--workbench")).toBe(true);
   expect(content.querySelector("openclaw-chat-pane")).toBeNull();
-  for (const routeId of ["new-session", "systems", "dashboard", "connection", undefined, "chat"]) {
+  for (const routeId of [
+    "new-session",
+    "systems",
+    "dashboard",
+    "connection",
+    undefined,
+    "chat",
+  ] as const) {
     owner.routeState = { routeId, routeFailed: routeId === undefined };
     owner.invalidate();
     flush();
