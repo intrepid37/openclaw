@@ -589,7 +589,7 @@ describe("chat pane header", () => {
     },
   );
 
-  it("keeps catalog sessions static and without a workspace chip", () => {
+  it("keeps catalog sessions static and without a workspace chip", async () => {
     const { container } = mountHeader({
       catalog: true,
       session: undefined,
@@ -600,8 +600,7 @@ describe("chat pane header", () => {
       "Session title",
     );
     expect(container.querySelector(".chat-pane__workspace-chip")).toBeNull();
-    container.querySelector<HTMLButtonElement>(".chat-pane__layout-trigger")!.click();
-    flush();
+    await openNativeMenu(container.querySelector(".chat-pane__layout-menu")!);
     expect(
       container.querySelector('.chat-pane__layout-menu [data-value="terminal"]'),
     ).not.toBeNull();
@@ -644,7 +643,7 @@ describe("chat pane header", () => {
     expect(container.querySelector(".chat-pane__workspace-chip")?.textContent).toContain("Copied");
   });
 
-  it("shows cloud placement and hides reveal when disabled", () => {
+  it("shows cloud placement and hides reveal when disabled", async () => {
     const session = row({ placement: { state: "active" } as GatewaySessionRow["placement"] });
     const { container } = mountHeader({
       session,
@@ -653,8 +652,7 @@ describe("chat pane header", () => {
     });
     expect(container.querySelector(".chat-pane__placement-chip")).not.toBeNull();
     const menu = container.querySelector(".chat-pane__workspace-menu")!;
-    menu.querySelector<HTMLButtonElement>(".oc-menu-trigger")!.click();
-    flush();
+    await openNativeMenu(menu);
     expect(container.querySelector('[data-value="reveal"]')).toBeNull();
     expect(container.querySelector('[data-value="copy-path"]')).not.toBeNull();
   });
