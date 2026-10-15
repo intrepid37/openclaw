@@ -35,12 +35,12 @@ it("opens help on its own retained header and retires native overlays when prese
   await second.container.querySelector("openclaw-chat-pane-versions-menu")?.updateComplete;
   const menu = second.container.querySelector<HTMLElement>(".chat-pane__branches-menu")!;
   const trigger = menu.querySelector<HTMLButtonElement>(".chat-pane__branches-trigger")!;
-  const info = menu.querySelector<HTMLButtonElement>(".chat-pane__versions-info")!;
-  const help = menu.querySelector<HTMLElement>(".chat-pane__versions-help")!;
   const menuSurface = menu.querySelector<HTMLElement>('[role="menu"]')!;
 
   await page.elementLocator(trigger).click();
   await expect.element(page.elementLocator(menuSurface)).toBeVisible();
+  const info = menu.querySelector<HTMLButtonElement>(".chat-pane__versions-info")!;
+  const help = menu.querySelector<HTMLElement>(".chat-pane__versions-help")!;
   await expect.poll(() => document.activeElement).toBe(info);
   await userEvent.keyboard("{Enter}");
   await expect.element(page.elementLocator(help)).toBeVisible();

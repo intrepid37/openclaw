@@ -1,5 +1,4 @@
 import { html, render } from "lit";
-import { flush } from "solid-js";
 /* @vitest-environment jsdom */
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { createDeferred } from "../../../../../test/helpers/promise.js";
