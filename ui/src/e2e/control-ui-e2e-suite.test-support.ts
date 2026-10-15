@@ -106,6 +106,7 @@ export function tooltipTitleText(item: Locator) {
 
 type HeldModuleContext = {
   closing: boolean;
+  active: Set<Promise<void>>;
   pages: Map<Page, Array<{ close: () => void; installed: ReturnType<Page["route"]> }>>;
 };
 const heldModuleContexts = new WeakMap<BrowserContext, HeldModuleContext>();
@@ -113,7 +114,7 @@ const heldModuleContexts = new WeakMap<BrowserContext, HeldModuleContext>();
 function getHeldModuleContext(context: BrowserContext): HeldModuleContext {
   let held = heldModuleContexts.get(context);
   if (!held) {
-    held = { closing: false, pages: new Map() };
+    held = { closing: false, active: new Set(), pages: new Map() };
     heldModuleContexts.set(context, held);
   }
   return held;
@@ -130,18 +131,28 @@ export async function holdModuleResponse(page: Page, module: RegExp) {
   void request.promise.catch(() => {});
   const release = () => gate.resolve();
   let requests = 0;
-  const installed = page.route(module, async (route) => {
-    requests += 1;
-    try {
-      const response = await route.fetch();
-      expect(response.status()).toBe(200);
-      request.resolve(route.request().url());
-      await gate.promise;
-      await route.fulfill({ response });
-    } catch (error) {
-      request.reject(error);
-      throw error;
-    }
+  const installed = page.route(module, (route) => {
+    const active = (async () => {
+      if (held.closing) {
+        await route.continue();
+        return;
+      }
+      requests += 1;
+      try {
+        const response = await route.fetch();
+        expect(response.status()).toBe(200);
+        request.resolve(route.request().url());
+        await gate.promise;
+        await route.fulfill({ response });
+      } catch (error) {
+        request.reject(error);
+        throw error;
+      }
+    })();
+    held.active.add(active);
+    const settled = () => held.active.delete(active);
+    void active.then(settled, settled);
+    return active;
   });
   // Register before awaiting installation so teardown also owns a pending route().
   const registrations = held.pages.get(page) ?? [];
@@ -318,6 +329,8 @@ export function createControlUiE2eSuite(options: ControlUiE2eSuiteOptions): Cont
             }
             // Release all gates before joining active page/context callbacks.
             await settleControlUiCleanup(registrations.map(({ installed }) => installed));
+            // Removing routes can auto-continue requests still owned by these callbacks.
+            await settleControlUiCleanup([...held.active]);
           },
           () =>
             settleControlUiCleanup([
