@@ -1,13 +1,17 @@
 /* @vitest-environment jsdom */
 
+import { createRouter, definePage } from "@openclaw/uirouter";
 import { render } from "@solidjs/testing-library";
 import { flush } from "solid-js";
 import { expect, it, onTestFinished, vi } from "vitest";
 import type { ControlUiHost, ControlUiReplacement } from "../../../src/plugin-sdk/control-ui.js";
+import type { RouteId } from "../app-route-paths.ts";
+import type { ChatRouteData } from "../pages/chat/session-route-data.ts";
 import type { ControlUiRegistration } from "../plugins/control-ui-capability.ts";
 import "../plugins/control-ui-view.solid.tsx";
 import { setupSidebarTest } from "../test-helpers/app-sidebar-setup.ts";
 import { settleLitElement } from "../test-helpers/lit-settle.ts";
+import { equalShellRouteState, selectShellRouteState } from "./app-host-route-state.ts";
 import { ShellOwner } from "./app-host.tsx";
 import { connectLegacyApplicationContext } from "./app-root-lit.ts";
 import { renderApplicationShell } from "./app-shell-view.tsx";
@@ -59,6 +63,48 @@ it("reserves session geometry before page mount and clears it on other routes", 
   owner.invalidate();
   flush();
   expect(content.classList.contains("content--workbench")).toBe(false);
+});
+
+it("preserves notice padding when a session route resolves without a chat pane", async () => {
+  const { owner, view } = await mountShell();
+  const content = view.container.querySelector("main.content")!;
+  const router = createRouter<RouteId, ChatRouteData>({
+    routes: [
+      definePage({ id: "chat", path: "/chat", component: () => ({}), loader: (data) => data }),
+    ],
+  });
+  const unsubscribe = router.subscribeSelector(
+    selectShellRouteState,
+    (state) => {
+      owner.routeState = state;
+      owner.invalidate();
+    },
+    equalShellRouteState,
+  );
+  onTestFinished(() => {
+    unsubscribe();
+    router.stop();
+  });
+  const session = { kind: "session", sessionKey: "agent:main:main", face: "chat" } as const;
+  await router.navigate("chat", session);
+  const notices: ChatRouteData[] = [
+    { kind: "ambiguous", shortId: "abc123", candidates: [], truncated: false, face: "chat" },
+    { kind: "route-error", message: "Session unavailable", face: "chat" },
+    {
+      kind: "missing-session",
+      face: "chat",
+      currentSessionHref: "/chat",
+      sessionsHref: "/sessions",
+    },
+  ];
+  for (const notice of notices) {
+    await router.revalidate(notice);
+    flush();
+    expect(content.classList.contains("content--workbench"), notice.kind).toBe(false);
+    await router.revalidate(session);
+    flush();
+    expect(content.classList.contains("content--workbench")).toBe(true);
+  }
 });
 
 it("keeps one sidebar and outlet while navigation moves between desktop and drawer", async () => {
