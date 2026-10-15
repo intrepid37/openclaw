@@ -312,7 +312,7 @@ extension GatewayProcessManager {
             return
         }
         do {
-            let runtime = try await BundledRuntime.seed()
+            let runtime = try BundledRuntime.forAppHosting()
             guard self.isCurrentGatewayStart(startGeneration) else { return }
             let port = GatewayEnvironment.gatewayPort()
             if await PortGuardian.shared.describe(port: port) != nil {
@@ -322,15 +322,26 @@ extension GatewayProcessManager {
             guard self.isCurrentGatewayStart(startGeneration) else { return }
             let environment = try self.appHostedEnvironment(runtime: runtime)
             try OpenClawConfigFile.ensureAppHostedGatewayAuth(environment: environment)
-            let pid = try await self.childSupervisor.start(configuration: .init(
-                executable: runtime.executable,
-                environment: environment,
-                logPath: GatewayLaunchAgentManager.launchdGatewayLogPath(),
-                port: port,
-                allowUnconfigured: self.hostsLocalGatewayWithRemotePrimary))
-            { [weak self] event in
-                self?.handleChildEvent(event, port: port)
-            }
+            let pid = try await self.childSupervisor.start(
+                configuration: .init(
+                    executable: runtime.executable,
+                    environment: environment,
+                    logPath: GatewayLaunchAgentManager.launchdGatewayLogPath(),
+                    port: port,
+                    allowUnconfigured: self.hostsLocalGatewayWithRemotePrimary),
+                configurationForRestart: { [weak self] in
+                    guard let self, !self.isTerminating else { throw CancellationError() }
+                    let runtime = try BundledRuntime.forAppHosting()
+                    return try .init(
+                        executable: runtime.executable,
+                        environment: self.appHostedEnvironment(runtime: runtime),
+                        logPath: GatewayLaunchAgentManager.launchdGatewayLogPath(),
+                        port: port,
+                        allowUnconfigured: self.hostsLocalGatewayWithRemotePrimary)
+                },
+                onEvent: { [weak self] event in
+                    self?.handleChildEvent(event, port: port)
+                })
             guard self.isCurrentGatewayStart(startGeneration) else { return }
             await self.observeChildReadiness(pid: pid, port: port, generation: startGeneration)
         } catch {
@@ -399,15 +410,15 @@ extension GatewayProcessManager {
             context: context,
             deadlinePolicy: .startup(timeout: GatewayLaunchAgentManager.startupMigrationTolerance),
             clock: self.readinessClock)
-        if await self.publishGatewayReadinessTerminal(terminal, context: context) {
-            do { try await BundledRuntime.garbageCollectAfterHealthy() } catch {
-                self.appendLog("[gateway] old runtime cleanup deferred: \(error.localizedDescription)\n")
-            }
-        }
+        _ = await self.publishGatewayReadinessTerminal(terminal, context: context)
     }
 
     func shutdownAppHostedGateway() async {
         self.isTerminating = true
+        self.runtimePreparationTask?.cancel()
+        await BundledRuntime.cancelSeeding()
+        await self.runtimePreparationTask?.value
+        self.runtimePreparationTask = nil
         self.canonicalUpdateStage = nil
         _ = try? await self.hostingChangeTask?.value
         // Already-admitted service writes and a pending pause settle before app exit.
@@ -552,7 +563,9 @@ extension GatewayProcessManager {
         let pausedUpdate = AppStateStore.shared.isPaused ? try self.preparePausedServiceUpdate() : nil
         self.hostingChangeInProgress = true
         defer { self.hostingChangeInProgress = false }
-        let runtime = try await BundledRuntime.seed()
+        let runtime = hosting == .app
+            ? try BundledRuntime.forAppHosting()
+            : try await BundledRuntime.seed()
         if try self.bundledRuntimeUpdateIsPaused(generation: updateGeneration) {
             if self.gatewayStartGeneration == updateGeneration {
                 try await self.completePausedServiceUpdate(pausedUpdate, runtime: runtime) {

@@ -126,7 +126,9 @@ extension CLIInstaller {
         let state = AppProfile.current.stateDirectoryURL()
         guard let cli else {
             await statusHandler("Preparing OpenClaw…")
-            return try await BundledRuntime.seed().packageRoot.path
+            return manager.gatewayHosting == .app
+                ? try BundledRuntime.forAppHosting().packageRoot.path
+                : try await BundledRuntime.seed().packageRoot.path
         }
         if GatewayLaunchAgentManager.bundledRuntimeReplacementError(
             appManaged: true, installedRuntimePath: cli.prefix.last, stateDirectory: state) == nil
@@ -145,6 +147,7 @@ extension CLIInstaller {
             if case let .failed(reason) = activation {
                 throw GatewayHostingError(message: reason ?? "The updated Gateway did not become ready.")
             }
+            if manager.gatewayHosting == .app { return try BundledRuntime.forAppHosting().packageRoot.path }
             guard let runtime = try BundledRuntime.seeded() else {
                 throw GatewayHostingError(message: "The prepared Gateway runtime is unavailable. Retry setup.")
             }
