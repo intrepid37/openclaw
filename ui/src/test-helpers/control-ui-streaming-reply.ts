@@ -93,7 +93,8 @@ function installStreamingReplyProbe() {
     } finally {
       if (active && current) {
         current.parseCalls++;
-        current.parseChars += source.length;
+        // oxlint-disable-next-line typescript/no-unnecessary-type-conversion -- Native inputs include TrustedHTML, which lib.dom omits.
+        current.parseChars += String(source).length;
         current.parseMs += performance.now() - start;
       }
     }
@@ -108,7 +109,8 @@ function installStreamingReplyProbe() {
       } finally {
         if (active && current && this instanceof HTMLTemplateElement) {
           current.parseCalls++;
-          current.parseChars += value.length;
+          // oxlint-disable-next-line typescript/no-unnecessary-type-conversion -- Native inputs include TrustedHTML, which lib.dom omits.
+          current.parseChars += String(value).length;
           current.parseMs += performance.now() - start;
         }
       }
@@ -191,6 +193,9 @@ function installStreamingReplyProbe() {
     },
     finish() {
       active = false;
+      if (deltas.some((delta) => !Number.isFinite(delta.parseChars))) {
+        throw new Error("Streaming HTML probe produced a non-finite character count");
+      }
       const sorted = (values: number[]) => values.toSorted((a, b) => a - b);
       const distribution = (values: number[]) => {
         const xs = sorted(values);
