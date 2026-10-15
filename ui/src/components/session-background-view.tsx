@@ -1,6 +1,7 @@
 import { createEffect, createMemo } from "solid-js";
 import type { ApplicationContext } from "../app/context.ts";
 import { createIdleImport } from "../lib/idle-import.ts";
+import { projectSource } from "../lib/reactive/projection.ts";
 import { solidContent } from "../lit/solid-content.tsx";
 import type { SessionBackground } from "./session-background.ts";
 
@@ -14,8 +15,14 @@ type Props = {
 
 /** Unset/None startup needs no image renderer, styles, transport, or geometry work. */
 export function SessionBackgroundView(props: Props) {
+  const background = projectSource(props.context?.theme, {
+    read: (theme) => theme?.settings.background,
+    subscribe: (theme, notify) => theme?.subscribe(notify) ?? (() => undefined),
+    equality: "revision",
+  });
+  createEffect(() => props.context?.theme, background.replaceSource);
   const active = createMemo(() => {
-    const preference = props.context?.theme.settings.background;
+    const preference = background.read();
     return Boolean(
       props.presented !== false &&
       preference &&

@@ -17,7 +17,6 @@ import { formatSenderLabel } from "../../lib/chat/sender-label.ts";
 import { formatUiError } from "../../lib/format-error.ts";
 import { resolveIdentityHue } from "../../lib/identity-avatar.ts";
 import { registerEnglishCatalog, t } from "../../lib/reactive/i18n.ts";
-import { LitContent } from "../../lit/solid-content.tsx";
 import {
   ChatAuthorAvatar,
   UserAvatarSlot,
@@ -28,7 +27,7 @@ import { hasUserFileAttachments } from "../chat/components/chat-message-attachme
 import { MessageImages } from "../chat/components/chat-message-images-solid.tsx";
 import { projectMessageMedia } from "../chat/components/chat-message-media.ts";
 import { MessageJson, MessageMarkdown } from "../chat/components/chat-message-text-view.tsx";
-import { renderChatWorkingIndicator } from "../chat/components/chat-working-indicator.ts";
+import { ChatWorkingIndicator } from "../chat/components/chat-working-indicator.tsx";
 import type { buildLocalUserMessage } from "../chat/user-message-content.ts";
 
 registerEnglishCatalog(registerNewSessionSetupEnglish);
@@ -228,11 +227,9 @@ function NewSessionSubmission(props: {
           <Show
             when={props.completion}
             fallback={
-              <LitContent
-                value={renderChatWorkingIndicator(
-                  { kind: "reading-indicator", key, startedAt: props.message.timestamp },
-                  { startupLabel: props.statusLabel ?? t("newSession.starting") },
-                )}
+              <ChatWorkingIndicator
+                part={{ kind: "reading-indicator", key, startedAt: props.message.timestamp }}
+                options={{ startupLabel: props.statusLabel ?? t("newSession.starting") }}
               />
             }
           >

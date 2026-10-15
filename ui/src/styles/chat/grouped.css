@@ -356,10 +356,20 @@
   pointer-events: var(--chat-message-action-pointer-events, none);
 }
 
+/* Rest at the sibling footer actions' revealed opacity so the row reads as one
+   color; the trigger itself owns the accent hover color. */
 .chat-group:hover .chat-reaction-action,
 .chat-group:focus-within .chat-reaction-action {
-  opacity: 1;
+  opacity: 0.6;
   pointer-events: auto;
+}
+
+.chat-group .chat-reaction-action:hover {
+  opacity: 1;
+}
+
+.chat-group .chat-reaction-action:has(.trigger[aria-expanded="true"]) {
+  opacity: 1;
 }
 
 /* Keep long configurable sender names compact while footer actions retain
@@ -1594,21 +1604,13 @@ button.chat-reply-attribution__target:disabled {
   display: contents;
 }
 
-/* Remove the one-wrapper alternatives when the Lit typing indicator is ported. */
-.chat-message-avatar-anchor > :is(.chat-avatar, .chat-avatar-slot),
-.chat-message-avatar-anchor
-  > :where(span:not(.chat-avatar, .chat-avatar-slot))
-  > :is(.chat-avatar, .chat-avatar-slot) {
+.chat-message-avatar-anchor > :is(.chat-avatar, .chat-avatar-slot) {
   position: absolute;
   inset-block-start: 0;
   inset-inline-start: calc(100% + var(--chat-avatar-gap));
 }
 
-.chat-group--peer .chat-message-avatar-anchor > :is(.chat-avatar, .chat-avatar-slot),
-.chat-group--peer
-  .chat-message-avatar-anchor
-  > :where(span:not(.chat-avatar, .chat-avatar-slot))
-  > :is(.chat-avatar, .chat-avatar-slot) {
+.chat-group--peer .chat-message-avatar-anchor > :is(.chat-avatar, .chat-avatar-slot) {
   inset-inline-start: auto;
   inset-inline-end: calc(100% + var(--chat-avatar-gap));
 }

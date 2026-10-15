@@ -22,7 +22,7 @@ import { IdentityAvatarImage, identityAvatarState } from "./identity-avatar-imag
 import { useAvatarGatewayContext, useIdentityAvatarView } from "./identity-avatar-view.ts";
 import "../../styles/identity-avatar.css";
 
-const AgentAvatarFace = lazy(() => import("../agent-avatar-face.ts"), {
+const AgentAvatarFace = lazy(() => import("../agent-avatar-face.tsx"), {
   export: "AgentAvatarFace",
 });
 

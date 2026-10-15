@@ -1,8 +1,10 @@
 /* @vitest-environment jsdom */
 import { createSignal, flush } from "solid-js";
-import { describe, expect, it } from "vitest";
-import { mountSolid } from "../test-helpers/mount-solid.ts";
+import { afterEach, describe, expect, it } from "vitest";
+import { cleanupSolid, mountSolid } from "../test-helpers/mount-solid.ts";
 import { AgentAvatarFace } from "./agent-avatar-face.tsx";
+
+afterEach(cleanupSolid);
 
 function face(id: string) {
   const view = mountSolid(() => <AgentAvatarFace agentId={id} />);

@@ -12,40 +12,9 @@ import {
   readSessionDefaults,
   resolveUiSelectedGlobalAgentId,
 } from "../../lib/sessions/session-key.ts";
-import { emptyLegacyContent, solidContent } from "../../lit/solid-content.tsx";
-import {
-  ChatAvatar,
-  ForwardedAvatar,
-  type ChatAvatarProps,
-  type ForwardedAvatarOptions,
-} from "./chat-avatar-view.tsx";
 import { captureChatConnectionOwner } from "./chat-connection-owner.ts";
 
 export { ChatAvatar, ForwardedAvatar } from "./chat-avatar-view.tsx";
-
-/** Remaining Lit message renderers mount the same native avatar component. */
-export function renderChatAvatar(
-  role: string,
-  assistant?: ChatAvatarProps["assistant"],
-  user?: ChatAvatarProps["user"],
-  sender?: ChatAvatarProps["sender"],
-  channelAvatar?: ChatAvatarProps["channelAvatar"],
-) {
-  return solidContent(ChatAvatar, { role, assistant, user, sender, channelAvatar });
-}
-
-export function renderForwardedAvatar(
-  agentId: string | undefined,
-  options: ForwardedAvatarOptions,
-) {
-  if (
-    !(agentId && agentId === options.agentId) &&
-    !options.agents?.some((agent) => agent.id === agentId)
-  ) {
-    return emptyLegacyContent;
-  }
-  return solidContent(ForwardedAvatar, { agentId, options });
-}
 
 type ChatAvatarHost = {
   assistantAgentId?: string | null;

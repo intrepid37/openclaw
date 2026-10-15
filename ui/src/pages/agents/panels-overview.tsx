@@ -8,14 +8,14 @@ import type {
   ModelCatalogEntry,
   ModelCatalogResult,
 } from "../../api/types.ts";
-import "../../components/agent-emoji-picker.ts";
 import type { ApplicationConfigCapability } from "../../app/config.ts";
+import { AgentEmojiPicker } from "../../components/agent-emoji-picker.tsx";
 import {
   renderDecisionModelPicker,
   type DecisionModelEntry,
 } from "../../components/decision-model-picker.ts";
-import "../../components/multi-select-registration.ts";
 import { renderModelPicker } from "../../components/model-picker.ts";
+import { MultiSelect } from "../../components/multi-select.tsx";
 import type { PanelRefreshStatus } from "../../components/panel-refresh-status-state.ts";
 import "../../components/tooltip.ts";
 import { AgentIdentityAvatar } from "../../components/solid/identity-avatar.tsx";
@@ -271,10 +271,10 @@ export function AgentOverview(
                         }
                       }}
                     />
-                    <openclaw-agent-emoji-picker
-                      prop:value={identityEmoji()}
-                      prop:disabled={identityBusy()}
-                      prop:onSelect={(emoji: string) =>
+                    <AgentEmojiPicker
+                      value={identityEmoji()}
+                      disabled={identityBusy()}
+                      onSelect={(emoji: string) =>
                         params.onIdentityFieldChange("emoji", limitEmoji(emoji))
                       }
                     />
@@ -439,20 +439,18 @@ export function AgentOverview(
           title={t("agents.overview.fallbacks")}
           stacked={true}
           control={
-            <openclaw-multi-select
+            <MultiSelect
               class="agent-fallbacks"
-              prop:options={fallbackOptions()}
-              prop:value={fallbackChips()}
-              prop:isExcluded={isPrimaryModel()}
-              prop:getValueKey={normalizeAgentModelRefForConfig}
-              prop:placeholder={t("agents.overview.addFallback")}
-              prop:accessibleLabel={t("agents.overview.fallbacks")}
-              prop:allowCustom={!catalogOwnsChoices()}
-              prop:disabled={disabled()}
-              prop:onChange={(next: string[]) =>
-                params.onModelFallbacksChange(params.agent.id, next)
-              }
-              prop:onOpen={params.onModelCatalogOpen}
+              options={fallbackOptions()}
+              value={fallbackChips()}
+              isExcluded={isPrimaryModel()}
+              getValueKey={normalizeAgentModelRefForConfig}
+              placeholder={t("agents.overview.addFallback")}
+              accessibleLabel={t("agents.overview.fallbacks")}
+              allowCustom={!catalogOwnsChoices()}
+              disabled={disabled()}
+              onChange={(next: string[]) => params.onModelFallbacksChange(params.agent.id, next)}
+              onOpen={params.onModelCatalogOpen}
             />
           }
         />

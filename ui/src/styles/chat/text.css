@@ -385,8 +385,10 @@
       min(
         12rem,
         calc(
-          (100cqw - var(--chat-transcript-column-width, 100cqw) - 2 * var(--chat-thread-gutter) -
-              2 * var(--chat-thread-side-inset)) /
+          (
+              100cqw - var(--chat-transcript-column-width, 100cqw) - 2 * var(--chat-thread-gutter) -
+                2 * var(--chat-thread-side-inset)
+            ) /
             2
         )
       )
@@ -899,17 +901,9 @@
 }
 
 /* Keep inline identities visible on mobile without exposing an image's fallback. */
-/* Remove the one-wrapper alternatives with the Lit forwarded-attribution caller. */
 .chat-reply-attribution__agent-avatar,
 .chat-reply-attribution__agent-avatar > :is(.chat-avatar, .chat-avatar-slot),
-.chat-reply-attribution__agent-avatar
-  > :where(span:not(.chat-avatar, .chat-avatar-slot))
-  > :is(.chat-avatar, .chat-avatar-slot),
-.chat-reply-attribution__agent-avatar > .chat-avatar-slot:not(.is-fallback) > img,
-.chat-reply-attribution__agent-avatar
-  > :where(span:not(.chat-avatar, .chat-avatar-slot))
-  > .chat-avatar-slot:not(.is-fallback)
-  > img {
+.chat-reply-attribution__agent-avatar > .chat-avatar-slot:not(.is-fallback) > img {
   display: inline-grid;
 }
 
