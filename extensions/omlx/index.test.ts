@@ -1,6 +1,7 @@
 import type { OpenClawConfig, ProviderRuntimeModel } from "openclaw/plugin-sdk/plugin-entry";
 import { capturePluginRegistration } from "openclaw/plugin-sdk/plugin-test-runtime";
 import { CUSTOM_LOCAL_AUTH_MARKER } from "openclaw/plugin-sdk/provider-auth";
+import { resolveApiKeyForProvider } from "openclaw/plugin-sdk/provider-auth-runtime";
 import type { ModelProviderConfig } from "openclaw/plugin-sdk/provider-model-shared";
 import { withOpenClawTestState } from "openclaw/plugin-sdk/test-state";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -395,7 +396,7 @@ it("connects the registered setup and catalog hooks to the inference models endp
   expect(paths).toEqual(["/v1/models", "/v1/models"]);
 });
 
-function chatModel(baseUrl: string): ProviderRuntimeModel {
+function chatModel(baseUrl: string) {
   return {
     id: "fixture-chat",
     name: "fixture-chat",
@@ -407,8 +408,56 @@ function chatModel(baseUrl: string): ProviderRuntimeModel {
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextWindow: 32_768,
     maxTokens: 8_192,
-  };
+  } satisfies ProviderRuntimeModel;
 }
+
+it.each<{
+  name: string;
+  configured: Pick<ModelProviderConfig, "headers" | "request">;
+}>([
+  {
+    name: "remote Authorization",
+    configured: { headers: { Authorization: "Bearer fixture-request-key" } },
+  },
+  {
+    name: "custom request auth",
+    configured: {
+      request: {
+        auth: { mode: "header", headerName: "X-oMLX-Key", value: "fixture-request-key" },
+      },
+    },
+  },
+])("resolves header-only credentials through the public auth boundary: $name", async (scenario) => {
+  vi.stubEnv("OMLX_API_KEY", "");
+  await withOpenClawTestState({ label: "omlx-direct-header-auth" }, async (state) => {
+    const model = chatModel("https://omlx.example.test/v1");
+    const auth = await resolveApiKeyForProvider({
+      provider: "omlx",
+      modelId: model.id,
+      modelApi: model.api,
+      modelBaseUrl: model.baseUrl,
+      agentDir: state.agentDir(),
+      workspaceDir: state.workspaceDir,
+      store: { version: 1, profiles: {} },
+      allowAuthProfileFallback: false,
+      cfg: {
+        plugins: { allow: ["omlx"] },
+        models: {
+          providers: {
+            omlx: {
+              baseUrl: model.baseUrl,
+              api: "openai-completions",
+              models: [model],
+              ...scenario.configured,
+            },
+          },
+        },
+      },
+    });
+    expect(auth.apiKey).toBeTruthy();
+    expect(auth.mode).toBe("api-key");
+  });
+});
 
 it.each<{
   name: string;
