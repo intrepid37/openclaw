@@ -2813,9 +2813,10 @@ policy and route. Arguments, environment, output, operating-system handles, appr
 and execution authority are not persisted.
 
 This additive field needs no schema migration or index. The existing session
-writer commits it; startup reads the session-list projection in a worker after
-store admission. Storage grows with pending background completions, and startup
-scans the existing session inventory once. The notification uses current session
+writer commits it; startup filters the private fact in SQL and reads only matching
+session-list projections in pages of 64 through the existing worker after store
+admission. Unrelated entry payloads and saved prompts stay in SQLite. Storage grows
+with pending background completions. The notification uses current session
 admission and a stable source-turn identity; it cannot re-run the command. The
 fact remains until transcript adoption, explicit cancellation/removal, reset,
 archive, or rejection by current notification policy. Incognito sessions do not

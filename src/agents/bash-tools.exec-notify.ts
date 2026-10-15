@@ -134,11 +134,11 @@ function installExecNotificationPersistence(session: ProcessSession) {
 export async function recoverExecExitNotifications(cfg: OpenClawConfig, signal: AbortSignal) {
   const [
     { discoverRestartRecoveryStoreTargets },
-    { readSessionEntrySummariesInWorker },
+    { iteratePendingExecNotificationEntriesInWorker },
     { patchSessionEntryCore },
   ] = await Promise.all([
     import("./main-session-recovery/main-session-restart-recovery-shared.js"),
-    import("../config/sessions/session-entry-read-runtime.js"),
+    import("../config/sessions/session-entry-read-maintenance.js"),
     import("../config/sessions/session-accessor.sqlite-entry.js"),
   ]);
   const targets = await discoverRestartRecoveryStoreTargets({
@@ -147,7 +147,9 @@ export async function recoverExecExitNotifications(cfg: OpenClawConfig, signal: 
   });
   for (const scope of targets) {
     signal.throwIfAborted();
-    for (const { sessionKey, entry } of await readSessionEntrySummariesInWorker(scope)) {
+    for await (const { sessionKey, entry } of iteratePendingExecNotificationEntriesInWorker(
+      scope,
+    )) {
       for (const [id, fact] of Object.entries(entry.pendingExecNotifications ?? {})) {
         if (fact.incarnation === getAgentEventLifecycleGeneration()) {
           continue;
