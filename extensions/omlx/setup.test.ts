@@ -436,6 +436,25 @@ describe("oMLX setup through the inference catalog", () => {
         }),
       ).toBeUndefined();
     }
+    const localHeaders = { Authorization: "Bearer local-header-key" };
+    expect(
+      await provider?.prepareRuntimeAuth?.({
+        ...runtimeContext,
+        apiKey: CUSTOM_LOCAL_AUTH_MARKER,
+        model: { ...model, baseUrl: "http://127.0.0.1:8000/v1", headers: localHeaders },
+        config: {
+          models: {
+            providers: {
+              omlx: {
+                ...providerConfig,
+                baseUrl: "http://127.0.0.1:8000/v1",
+                headers: localHeaders,
+              },
+            },
+          },
+        },
+      }),
+    ).toEqual({ apiKey: "omlx-local" });
   });
 
   it("reports a non-string model option before discovery or credential persistence", async () => {
