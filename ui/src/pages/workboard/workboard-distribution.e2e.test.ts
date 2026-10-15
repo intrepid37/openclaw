@@ -6,7 +6,7 @@ import {
   readPluginControlUiAssets,
 } from "../../../../src/plugins/control-ui-assets.ts";
 import { loadPluginManifest } from "../../../../src/plugins/manifest.ts";
-import type { ControlUiBuildInfo } from "../../build-info.ts";
+import { normalizeControlUiBuildInfo } from "../../build-info-normalizers.ts";
 import { createControlUiE2eSuite } from "../../e2e/control-ui-e2e-suite.test-support.ts";
 import {
   defaultControlUiFeatureMethods,
@@ -35,6 +35,9 @@ const suite = createControlUiE2eSuite({
 
 suite.define(() => {
   it("loads entry, CSS and lazy Workboard chunks from the UI origin with an authenticated remote Gateway", async () => {
+    const buildInfo = normalizeControlUiBuildInfo(
+      JSON.parse(await fs.readFile(path.join(repoRoot, "dist/build-info.json"), "utf8")),
+    );
     const pluginRoot = path.join(repoRoot, "dist/extensions/workboard");
     const manifest = loadPluginManifest(pluginRoot, false);
     if (!manifest.ok || !manifest.manifest.controlUi) {
@@ -46,9 +49,6 @@ suite.define(() => {
     });
     const revision = pluginControlUiRevision(controlUi, uiCapabilities, build.assets);
     const pkg = JSON.parse(await fs.readFile(path.join(pluginRoot, "package.json"), "utf8"));
-    const buildInfo: Pick<ControlUiBuildInfo, "buildId" | "version"> = JSON.parse(
-      await fs.readFile(path.join(repoRoot, "dist/build-info.json"), "utf8"),
-    );
     const gatewayUrl = "ws://gateway.example/ws";
     const gatewayPrefix = `http://gateway.example/__openclaw__/plugins/control-ui/workboard/${revision}/`;
     const board = { id: "ops", name: "Operations", total: 0, active: 0, archived: 0, byStatus: {} };
