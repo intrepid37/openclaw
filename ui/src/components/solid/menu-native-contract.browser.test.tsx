@@ -313,6 +313,8 @@ it("keeps descendant-only native overlap leased through closing and releases aft
   expect(bounds.left).toBeGreaterThan(surface().getBoundingClientRect().right);
   await expect.poll(() => states).toEqual([false, true]);
   const branch = [surface(), child];
+  // Establish the visible starting state for the closing transitions.
+  await expect.poll(() => branch.map((menu) => getComputedStyle(menu).opacity)).toEqual(["1", "1"]);
   // Hold the parent too: its exit moves the submenu anchor before hiding it.
   branch.forEach((menu) => menu.style.setProperty("--oc-overlay-hide-duration", "60s"));
   const hidden = new Promise<void>((resolve) => {
