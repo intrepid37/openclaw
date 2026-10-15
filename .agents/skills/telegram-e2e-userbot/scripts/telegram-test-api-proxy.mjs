@@ -98,12 +98,38 @@ const DRAIN_ATTEMPT_TIMEOUT_MS = 15_000;
 const DRAIN_INITIAL_BACKOFF_MS = 1_000;
 const DRAIN_MAX_BACKOFF_MS = 10_000;
 
-async function drainTelegramTestUpdates(apiRoot, token, { sleep, assertLeaseHealthy }) {
+function sleepUntilStopped(ms, signal) {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) {
+      reject(signal.reason);
+      return;
+    }
+    const stopped = () => {
+      clearTimeout(timer);
+      reject(signal.reason);
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", stopped);
+      resolve();
+    }, ms);
+    signal.addEventListener("abort", stopped, { once: true });
+  });
+}
+
+async function drainTelegramTestUpdates(apiRoot, token, { sleep, stopSignal, assertLeaseHealthy }) {
   const deadline = Date.now() + DRAIN_BUDGET_MS;
   let offset = 0;
   let attempt = 0;
   let backoffMs = DRAIN_INITIAL_BACKOFF_MS;
+  let lastResult = "no failed attempt";
+  const failed = (reason) =>
+    new Error(
+      `Telegram Test Bot API getUpdates failed while draining stale updates after ${attempt} attempt(s); last result ${lastResult}${reason}. Check telegram_test_api_drain_failure log lines and confirm no other process polls this bot.`,
+    );
   for (;;) {
+    assertLeaseHealthy();
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) throw failed(` within the ${DRAIN_BUDGET_MS / 1_000}s retry budget`);
     attempt += 1;
     let status;
     let telegramErrorCode;
@@ -118,7 +144,11 @@ async function drainTelegramTestUpdates(apiRoot, token, { sleep, assertLeaseHeal
           timeout: 0,
           allowed_updates: ["message", "edited_message"],
         }),
-        signal: AbortSignal.timeout(DRAIN_ATTEMPT_TIMEOUT_MS),
+        // Proxy teardown cancels the attempt; the remaining budget caps how long it may hang.
+        signal: AbortSignal.any([
+          stopSignal,
+          AbortSignal.timeout(Math.min(DRAIN_ATTEMPT_TIMEOUT_MS, remainingMs)),
+        ]),
       });
       status = response.status;
       const payload = await response.json().catch(() => undefined);
@@ -140,6 +170,8 @@ async function drainTelegramTestUpdates(apiRoot, token, { sleep, assertLeaseHeal
       // Network failures and per-attempt timeouts never reached a Bot API status.
       failure = error;
     }
+    // A revoked lease or closed proxy fails every later attempt; stop instead of spending the budget.
+    assertLeaseHealthy();
     const retryable = status === undefined || status === 409 || status === 429 || status >= 500;
     console.error(
       JSON.stringify({
@@ -152,22 +184,16 @@ async function drainTelegramTestUpdates(apiRoot, token, { sleep, assertLeaseHeal
         ...(failure === undefined ? {} : safeErrorAtoms(failure)),
       }),
     );
-    // A revoked lease or closed proxy fails every later attempt; stop instead of spending the budget.
-    assertLeaseHealthy();
+    lastResult =
+      status === undefined
+        ? `no HTTP response (${safeErrorAtoms(failure).errorCode})`
+        : `HTTP ${status}${telegramErrorCode === undefined ? "" : `, error_code ${telegramErrorCode}`}`;
+    if (!retryable) throw failed(" (not retryable)");
     const delayMs = retryAfterMs ?? backoffMs;
-    if (!retryable || Date.now() + delayMs >= deadline) {
-      const last =
-        status === undefined
-          ? `no HTTP response (${safeErrorAtoms(failure).errorCode})`
-          : `HTTP ${status}${telegramErrorCode === undefined ? "" : `, error_code ${telegramErrorCode}`}`;
-      throw new Error(
-        `Telegram Test Bot API getUpdates failed while draining stale updates after ${attempt} attempt(s); last result ${last}${
-          retryable ? ` within the ${DRAIN_BUDGET_MS / 1_000}s retry budget` : " (not retryable)"
-        }. Check telegram_test_api_drain_failure log lines and confirm no other process polls this bot.`,
-      );
+    if (Date.now() + delayMs >= deadline) {
+      throw failed(` within the ${DRAIN_BUDGET_MS / 1_000}s retry budget`);
     }
-    await sleep(delayMs);
-    assertLeaseHealthy();
+    await sleep(delayMs, stopSignal);
     if (retryAfterMs === undefined) backoffMs = Math.min(backoffMs * 2, DRAIN_MAX_BACKOFF_MS);
   }
 }
@@ -178,7 +204,7 @@ export async function startTelegramTestApiProxy({
   upstream = "https://api.telegram.org",
   fetchImpl = fetch,
   leaseHealth,
-  sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  sleep = sleepUntilStopped,
 } = {}) {
   let responseHold;
   let requestRejection;
@@ -199,8 +225,10 @@ export async function startTelegramTestApiProxy({
     leaseHealth?.assertHealthy();
   };
 
+  const stopController = new AbortController();
   const stop = (error) => {
     leaseError ??= error;
+    stopController.abort(leaseError);
     responseHold = undefined;
     requestRejection = undefined;
     heldResponse?.release.resolve();
@@ -458,7 +486,11 @@ export async function startTelegramTestApiProxy({
   return {
     apiRoot,
     drainUpdates: (token) =>
-      drainTelegramTestUpdates(apiRoot, token, { sleep, assertLeaseHealthy }),
+      drainTelegramTestUpdates(apiRoot, token, {
+        sleep,
+        stopSignal: stopController.signal,
+        assertLeaseHealthy,
+      }),
     rejectNextRequest({ method, skip = 0, bodyIncludes, times = 1, retryAfter }) {
       assertLeaseHealthy();
       if (requestRejection) throw new Error("A Telegram API request rejection is active.");

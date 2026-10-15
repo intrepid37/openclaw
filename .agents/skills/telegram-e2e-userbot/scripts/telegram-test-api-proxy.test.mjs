@@ -203,21 +203,47 @@ test("drain fails immediately on a non-retryable status", async (t) => {
   assert.deepEqual(sleeps, []);
 });
 
-test("drain stops retrying once the proxy closes", async (t) => {
-  t.mock.method(console, "error", () => {});
+test("proxy close cancels a pending retry_after wait", async (t) => {
+  let waiting;
+  const diagnosed = new Promise((resolve) => {
+    waiting = resolve;
+  });
+  t.mock.method(console, "error", () => waiting());
   let upstreamRequests = 0;
+  // Default sleep: a 60 s retry_after must not outlive teardown or keep the process alive.
   const proxy = await startTelegramTestApiProxy({
     fetchImpl: async () => {
       upstreamRequests += 1;
-      return new Response('{"ok":false,"error_code":500}', { status: 500 });
+      return new Response('{"ok":false,"error_code":429,"parameters":{"retry_after":60}}', {
+        status: 429,
+      });
     },
-    // Teardown lands while the drain waits between attempts.
-    sleep: () => proxy.close(),
   });
   t.after(() => proxy.close());
 
-  await assert.rejects(proxy.drainUpdates("123:ABC"), /Telegram Test Server proxy closed/u);
+  const drained = proxy.drainUpdates("123:ABC");
+  await diagnosed;
+  await proxy.close();
+
+  await assert.rejects(drained, /Telegram Test Server proxy closed/u);
   assert.equal(upstreamRequests, 1);
+});
+
+test("drain caps each attempt by the remaining budget", async (t) => {
+  const timeouts = [];
+  t.mock.method(AbortSignal, "timeout", (ms) => {
+    timeouts.push(ms);
+    return new AbortController().signal;
+  });
+  const { proxy, sleeps } = await startDrainProxy(t, [
+    [429, { ok: false, error_code: 429, parameters: { retry_after: 119 } }],
+    [200, { ok: true, result: [] }],
+  ]);
+
+  await proxy.drainUpdates("123:ABC");
+
+  assert.deepEqual(sleeps, [119_000]);
+  assert.deepEqual(timeouts, [15_000, 1_000]);
 });
 
 test("logs only nonempty getUpdates counts and preserves response bytes", async (t) => {
