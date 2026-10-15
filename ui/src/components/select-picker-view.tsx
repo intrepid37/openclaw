@@ -14,7 +14,7 @@ import { emptyLegacyContent, LitContent } from "../lit/solid-content.tsx";
 import { createOverlayAnchor } from "./overlay-anchor.ts";
 import { createOverlay, findOverlayParent } from "./overlay-lifecycle.ts";
 import type { OverlayNativeAdapter } from "./overlay-types.ts";
-import { revealInScrollRegion } from "./scroll-state-observer.ts";
+import { revealInScrollRegion } from "./scroll-state.ts";
 import type { PickerOption, PickerParams, PickerGroup } from "./select-picker-types.ts";
 import { Icon } from "./solid/icon.tsx";
 import { useMenuMachine } from "./solid/menu-machine.ts";

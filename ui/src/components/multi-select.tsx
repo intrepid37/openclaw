@@ -15,7 +15,7 @@ import { t } from "../lib/reactive/i18n.ts";
 import type { MultiSelectOption, MultiSelectProps } from "./multi-select-types.ts";
 import { createOverlayAnchor } from "./overlay-anchor.ts";
 import { createOverlay, findOverlayParent } from "./overlay-lifecycle.ts";
-import { revealInScrollRegion } from "./scroll-state-observer.ts";
+import { revealInScrollRegion } from "./scroll-state.ts";
 import { Icon } from "./solid/icon.tsx";
 import { useMenuMachine } from "./solid/menu-machine.ts";
 import { ProviderBrandIcon } from "./solid/provider-icon.tsx";

@@ -1,6 +1,6 @@
 import type { JSX } from "@solidjs/web";
 import { createRenderEffect, onCleanup } from "solid-js";
-import { revealInScrollRegion } from "../../../components/scroll-state-observer.ts";
+import { revealInScrollRegion } from "../../../components/scroll-state.ts";
 
 export { handleComposerMenuKeydown } from "../../../components/composer-menu.ts";
 

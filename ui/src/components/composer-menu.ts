@@ -1,4 +1,4 @@
-import { revealInScrollRegion } from "./scroll-state-observer.ts";
+import { revealInScrollRegion } from "./scroll-state.ts";
 
 export function handleComposerMenuKeydown(
   event: KeyboardEvent,

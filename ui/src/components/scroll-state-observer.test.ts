@@ -1,15 +1,14 @@
 /* @vitest-environment jsdom */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mountSolid } from "../test-helpers/mount-solid.ts";
-import { flush } from "../test-helpers/solid-settle.ts";
+import { observeScrollState } from "./scroll-state-observer.ts";
 import { SessionDataScrollController } from "./session-data-scroll-controller.ts";
-import { useScrollState } from "./solid/scroll-state.ts";
+
+type Publish = Parameters<typeof observeScrollState>[1];
 
 let container: HTMLDivElement;
-let mounted: ReturnType<typeof mountSolid> | undefined;
-let resized: ResizeObserverCallback;
-const observe = vi.fn();
+let resized: (entries: ResizeObserverEntry[]) => void;
 const unobserve = vi.fn();
+const observations: ReturnType<typeof observeScrollState>[] = [];
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame"] });
@@ -17,9 +16,9 @@ beforeEach(() => {
     "ResizeObserver",
     class {
       constructor(callback: ResizeObserverCallback) {
-        resized = callback;
+        resized = (entries) => callback(entries, this);
       }
-      observe = observe;
+      observe = vi.fn();
       unobserve = unobserve;
       disconnect = vi.fn();
     },
@@ -28,17 +27,19 @@ beforeEach(() => {
   document.body.append(container);
 });
 afterEach(() => {
-  mounted?.unmount();
-  mounted = undefined;
+  for (const observation of observations.splice(0)) {
+    observation.disconnect();
+  }
   container.remove();
   vi.clearAllMocks();
   vi.unstubAllGlobals();
   vi.useRealTimers();
 });
 
-function Scroller(props: { class?: string }) {
-  const scrollState = useScrollState();
-  return <div class={props.class} ref={scrollState} />;
+function watch(element: HTMLElement, publish: Publish) {
+  const observation = observeScrollState(element, publish);
+  observations.push(observation);
+  return observation;
 }
 
 function geometry(element: HTMLElement, reads: string[], name: string) {
@@ -55,83 +56,70 @@ function geometry(element: HTMLElement, reads: string[], name: string) {
 }
 
 describe("scroll state observation", () => {
-  it("batches every scroller read before publishing after a Solid update", () => {
-    mounted = mountSolid(
-      () => (
-        <>
-          <Scroller />
-          <Scroller />
-        </>
-      ),
-      { container },
-    );
-    const elements = [...container.children] as HTMLElement[];
+  it("batches every scroller read before publishing", () => {
+    const elements = [document.createElement("div"), document.createElement("div")];
+    container.append(...elements);
     const order: string[] = [];
-    elements.forEach((element, index) => {
+    const publishers = elements.map((element, index) => {
       geometry(element, order, `read-${index}`);
-      Object.defineProperty(element, "dataset", {
-        value: new Proxy(element.dataset, {
-          set(target, key, value) {
-            order.push("write");
-            return Reflect.set(target, key, value);
-          },
-        }),
+      const publish = vi.fn<Publish>(() => {
+        order.push(`publish-${index}`);
       });
+      watch(element, publish);
+      return publish;
     });
-    flush();
     expect(order).toEqual([]);
     vi.advanceTimersToNextFrame();
-    expect(order).toEqual(["read-0", "read-1", ...Array<string>(6).fill("write")]);
-    expect(
-      elements.map((element) => ({
-        scrollable: element.dataset.scrollable,
-        atStart: element.dataset.atStart,
-        atEnd: element.dataset.atEnd,
-      })),
-    ).toEqual([
-      { scrollable: "true", atStart: "true", atEnd: "false" },
-      { scrollable: "true", atStart: "true", atEnd: "false" },
-    ]);
+    expect(order).toEqual(["read-0", "read-1", "publish-0", "publish-1"]);
+    for (const publish of publishers) {
+      expect(publish).toHaveBeenCalledExactlyOnceWith({
+        scrollable: true,
+        atStart: true,
+        atEnd: false,
+      });
+    }
     order.length = 0;
     elements[0]!.dispatchEvent(new Event("scroll"));
     elements[0]!.dispatchEvent(new Event("scroll"));
     expect(order).toEqual([]);
     vi.advanceTimersToNextFrame();
-    expect(order).toEqual(["read-0"]);
+    expect(order).toEqual(["read-0", "publish-0"]);
   });
 
-  it("updates scroll boundaries after resize and stops observing unmounted scrollers", () => {
-    mounted = mountSolid(() => <Scroller />, { container });
-    const element = container.firstElementChild as HTMLElement;
+  it("updates scroll boundaries after resize and stops observing after disconnect", () => {
+    const element = document.createElement("div");
+    container.append(element);
     geometry(element, [], "read");
-    flush();
+    const publish = vi.fn();
+    const observation = watch(element, publish);
     vi.advanceTimersToNextFrame();
     element.scrollTop = 100;
-    resized(
-      [
-        {
-          target: element,
-          borderBoxSize: [],
-          contentBoxSize: [],
-          devicePixelContentBoxSize: [],
-          contentRect: new DOMRectReadOnly(),
-        },
-      ],
-      {} as ResizeObserver,
-    );
-    expect(element.dataset.atEnd).toBe("false");
+    resized([
+      {
+        target: element,
+        borderBoxSize: [],
+        contentBoxSize: [],
+        devicePixelContentBoxSize: [],
+        contentRect: new DOMRectReadOnly(),
+      },
+    ]);
+    expect(publish).toHaveBeenLastCalledWith({ scrollable: true, atStart: true, atEnd: false });
     vi.advanceTimersToNextFrame();
-    expect(element.dataset.atEnd).toBe("true");
-    mounted.unmount();
+    expect(publish).toHaveBeenLastCalledWith({ scrollable: true, atStart: false, atEnd: true });
+    observation.disconnect();
     expect(unobserve).toHaveBeenCalledWith(element);
+    element.dispatchEvent(new Event("scroll"));
+    vi.advanceTimersToNextFrame();
+    expect(publish).toHaveBeenCalledTimes(2);
   });
 
   it("shares a frame with the sidebar and never reads from its update entry point", () => {
-    mounted = mountSolid(() => <Scroller class="sidebar-shell__body" />, { container });
-    const element = container.firstElementChild as HTMLElement;
+    const element = document.createElement("div");
+    element.className = "sidebar-shell__body";
+    container.append(element);
     const reads: string[] = [];
     geometry(element, reads, "read");
-    flush();
+    watch(element, vi.fn());
     const notify = vi.fn();
     const sidebar = new SessionDataScrollController(notify);
     try {

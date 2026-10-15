@@ -8,7 +8,7 @@ import { generateUUID } from "../lib/uuid.ts";
 import { defineSolidBridge, type SolidBridgeElement } from "../lit/solid-bridge.ts";
 import type { AgentSelectOption } from "./agent-select-types.ts";
 import { avatarArtwork } from "./identity-avatar-view.ts";
-import { revealInScrollRegion } from "./scroll-state-observer.ts";
+import { revealInScrollRegion } from "./scroll-state.ts";
 import { Icon } from "./solid/icon.tsx";
 import { AgentIdentityAvatar } from "./solid/identity-avatar.tsx";
 import { Menu, type MenuItem, type MenuHandle } from "./solid/menu.tsx";
