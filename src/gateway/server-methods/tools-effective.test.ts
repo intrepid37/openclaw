@@ -2,7 +2,7 @@
 // caching behavior, delivery context, and policy filtering.
 
 import { expectDefined } from "@openclaw/normalization-core";
-import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { ErrorCodes } from "../../../packages/gateway-protocol/src/index.js";
 import type { McpToolCatalog } from "../../agents/agent-bundle-mcp-types.js";
 import { makeProviderModelFixture } from "../../agents/test-helpers/provider-model-fixture.js";
@@ -897,5 +897,40 @@ describe("tools.effective handler", () => {
     expect(runtimeMocks.loadSessionEntry).toHaveBeenCalledWith("global", { agentId: "ops" });
     expect(firstRespondCall(respond)?.[0]).toBe(true);
     expect(resolveEffectiveToolInventoryArg()?.agentId).toBe("ops");
+  });
+});
+
+describe("applyWebSearchEnabledFilter (real construction)", () => {
+  let applyWebSearchEnabledFilter: (
+    tools: Array<{ name?: string }>,
+    webSearchEnabled?: boolean,
+  ) => Array<{ name?: string }>;
+
+  beforeAll(async () => {
+    ({ applyWebSearchEnabledFilter } = await vi.importActual<
+      typeof import("../../agents/tools-effective-inventory.js")
+    >("../../agents/tools-effective-inventory.js"));
+  });
+
+  const tools = [
+    { name: "web_search", label: "Web Search" },
+    { name: "read", label: "Read" },
+    { name: "write", label: "Write" },
+  ];
+
+  it("excludes web_search from the returned inventory when webSearchEnabled is false", () => {
+    const result = applyWebSearchEnabledFilter(tools, false);
+    expect(result.map((t) => t.name)).toEqual(["read", "write"]);
+    expect(result.some((t) => t.name === "web_search")).toBe(false);
+  });
+
+  it("retains web_search when webSearchEnabled is undefined (no override)", () => {
+    const result = applyWebSearchEnabledFilter(tools, undefined);
+    expect(result.map((t) => t.name)).toEqual(["web_search", "read", "write"]);
+  });
+
+  it("retains web_search when webSearchEnabled is true", () => {
+    const result = applyWebSearchEnabledFilter(tools, true);
+    expect(result.map((t) => t.name)).toEqual(["web_search", "read", "write"]);
   });
 });
