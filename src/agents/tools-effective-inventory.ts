@@ -304,6 +304,19 @@ export function resolveConfiguredModelCompat(params: {
 }
 
 /** Resolves the grouped effective tool inventory and user-visible filtering notices. */
+/**
+ * Applies the session-scoped web_search kill switch to a built tool list.
+ * When `webSearchEnabled` is explicitly false, the core `web_search` tool is
+ * excluded; any other value leaves the list untouched.
+ */
+export function applyWebSearchEnabledFilter<T extends { name?: string }>(
+  tools: T[],
+  webSearchEnabled?: boolean,
+): T[] {
+  if (webSearchEnabled !== false) return tools;
+  return tools.filter((tool) => tool?.name !== "web_search");
+}
+
 export async function resolveEffectiveToolInventory(
   params: ResolveEffectiveToolInventoryParams,
 ): Promise<EffectiveToolInventoryResult> {
@@ -369,10 +382,7 @@ export async function resolveEffectiveToolInventory(
   // Honor the session-scoped web_search kill switch: when the session's saved
   // toolOverrides.webSearch is false, exclude the core web_search tool from the
   // preview inventory (mirrors SessionToolOverrides.webSearch enforcement).
-  const inventoryTools =
-    params.webSearchEnabled === false
-      ? effectiveTools.filter((tool) => tool?.name !== "web_search")
-      : effectiveTools;
+  const inventoryTools = applyWebSearchEnabledFilter(effectiveTools, params.webSearchEnabled);
   const projectedInventory = buildRuntimeCompatibleToolInventory({
     tools: inventoryTools,
     cfg: params.cfg,
