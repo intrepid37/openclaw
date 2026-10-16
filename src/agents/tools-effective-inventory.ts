@@ -366,8 +366,15 @@ export async function resolveEffectiveToolInventory(
     undefined,
     diagnostics.onFilter,
   );
+  // Honor the session-scoped web_search kill switch: when the session's saved
+  // toolOverrides.webSearch is false, exclude the core web_search tool from the
+  // preview inventory (mirrors SessionToolOverrides.webSearch enforcement).
+  const inventoryTools =
+    params.webSearchEnabled === false
+      ? effectiveTools.filter((tool) => tool?.name !== "web_search")
+      : effectiveTools;
   const projectedInventory = buildRuntimeCompatibleToolInventory({
-    tools: effectiveTools,
+    tools: inventoryTools,
     cfg: params.cfg,
     workspaceDir,
     modelProvider: params.modelProvider,
